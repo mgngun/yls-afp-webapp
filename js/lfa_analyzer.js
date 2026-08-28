@@ -3,8 +3,8 @@
  * 
  * Key Improvements:
  * 1. Adaptive Membrane Window Localization: Accurately isolates the inner nitrocellulose membrane, excluding plastic bevel shadows.
- * 2. Morphological 1D Top-Hat / Second Derivative Filtering: Rejects wide gradual illumination gradients and bevel shadows; detects only true narrow line peaks (FWHM 3~10%).
- * 3. Statistical 4-Sigma Noise Gate: Peak prominence must exceed 4x local background noise standard deviation (σ_bg).
+ * 2. Morphological 1D Top-Hat Filtering: Rejects gradual lighting and bevel shadows; detects true line peaks.
+ * 3. Statistical Noise Gate & Sensitive Peak Detection: Reliably identifies faint and standard C/T-lines on smartphone camera images.
  * 4. Strict C-Line Validation: Blank or unreacted strips with no C-line strictly produce '실패' (Invalid / Fail).
  */
 
@@ -16,17 +16,17 @@ class LFAAnalyzer {
             canonicalHeight: 960,
             
             // Along fluidics flow direction (0.0: Sample Inlet/Bottom, 1.0: Absorption Pad/Top)
-            tLinePosRatio: 0.28,   // Test Line (First encountered on Left ~28%)
-            cLinePosRatio: 0.72,   // Control Line (Second encountered on Right ~72%)
-            peakTolerance: 0.16,   // Search window around expected peak (±16%)
+            tLinePosRatio: 0.32,   // Test Line (~32% along flow)
+            cLinePosRatio: 0.76,   // Control Line (~76% along flow)
+            peakTolerance: 0.18,   // Search window around expected peak (±18%)
             
-            // Strict peak geometry requirements for real LFA lines
-            minPeakFWHM: 3,        // Min peak full-width at half-max (pixels)
-            maxPeakFWHM: 24,       // Max peak width (rejects broad shadows/gradients)
-            minCProminenceSigma: 4.5, // C-line must be > 4.5 * background noise σ
-            minTProminenceSigma: 3.5, // T-line must be > 3.5 * background noise σ
-            absoluteMinCPeak: 0.08,   // Absolute minimum absorbance drop for C-line
-            absoluteMinTPeak: 0.04,   // Absolute minimum absorbance drop for faint T-line
+            // Peak geometry requirements optimized for smartphone camera images
+            minPeakFWHM: 2,        // Min peak full-width at half-max (pixels)
+            maxPeakFWHM: 35,       // Max peak width (rejects broad shadows/gradients)
+            minCProminenceSigma: 1.8, // C-line must be > 1.8 * background noise σ
+            minTProminenceSigma: 1.8, // T-line must be > 1.8 * background noise σ
+            absoluteMinCPeak: 0.003,  // Absolute minimum absorbance drop for C-line (0.3%)
+            absoluteMinTPeak: 0.003,  // Absolute minimum absorbance drop for faint T-line (0.3%)
             
             // Calibration curve coefficients: Conc = a * (T/C) + b * (T/C)^1.4
             calibration: {
@@ -223,17 +223,17 @@ class LFAAnalyzer {
 
     /**
      * Adaptive Membrane Extraction:
-     * Inner window area trimmed by 18% horizontally and 8% vertically to completely exclude plastic casing bevel shadows.
+     * Inner window area trimmed horizontally and vertically to cleanly isolate the nitrocellulose membrane.
      */
     _extractAdaptiveMembraneROI(rectifiedCanvas) {
         const w = rectifiedCanvas.width;
         const h = rectifiedCanvas.height;
 
-        // Window region: x: 0.38 ~ 0.62, y: 0.30 ~ 0.56
-        const xMin = 0.40;
-        const xMax = 0.60;
-        const yMin = 0.31;
-        const yMax = 0.55;
+        // Window region: x: 0.41 ~ 0.59, y: 0.325 ~ 0.545
+        const xMin = 0.41;
+        const xMax = 0.59;
+        const yMin = 0.325;
+        const yMax = 0.545;
 
         const roiX = Math.round(w * xMin);
         const roiY = Math.round(h * yMin);
@@ -362,8 +362,6 @@ class LFAAnalyzer {
         const corrected = new Float32Array(len);
         const topHat = new Float32Array(len);
 
-        // Morphological Closing (Dilation followed by Erosion) with kernel size = 28 (larger than line width ~12)
-        // This reconstructs the continuous white background without the dark lines
         const kRadius = 14;
         
         // 1. Dilation (Local Maximum)
@@ -396,25 +394,25 @@ class LFAAnalyzer {
     }
 
     /**
-     * Robust Peak Detection with Geometry (FWHM) & Statistical 4-Sigma Noise Gate
+     * Robust Peak Detection with Geometry (FWHM) & Statistical Noise Gate
      */
     _detectPeaksRobust(rawProfile, correctedProfile, topHatProfile) {
         const len = topHatProfile.length;
 
-        // 1. Compute Local Background Noise Standard Deviation (σ_bg)
+        // 1. Compute Local Background Noise Standard Deviation (σ_bg) excluding outer edge boundaries
         const bgNoiseSigma = this._computeNoiseSigma(topHatProfile);
 
-        // 2. C-Line Search Region (Upper ~16% to 42%)
+        // 2. C-Line Search Region (Upper flow: ~58% to 94%)
         const cExpected = Math.round(len * this.config.cLinePosRatio);
         const cTolerance = Math.round(len * this.config.peakTolerance);
         const cStart = Math.max(2, cExpected - cTolerance);
-        const cEnd = Math.min(len - 3, cExpected + cTolerance);
+        const cEnd = Math.min(len - 2, cExpected + cTolerance);
 
-        // 3. T-Line Search Region (Lower ~58% to 84%)
+        // 3. T-Line Search Region (Lower flow: ~14% to 50%)
         const tExpected = Math.round(len * this.config.tLinePosRatio);
         const tTolerance = Math.round(len * this.config.peakTolerance);
         const tStart = Math.max(2, tExpected - tTolerance);
-        const tEnd = Math.min(len - 3, tExpected + tTolerance);
+        const tEnd = Math.min(len - 2, tExpected + tTolerance);
 
         const cPeak = this._validatePeak(topHatProfile, cStart, cEnd, this.config.absoluteMinCPeak, this.config.minCProminenceSigma * bgNoiseSigma);
         const tPeak = this._validatePeak(topHatProfile, tStart, tEnd, this.config.absoluteMinTPeak, this.config.minTProminenceSigma * bgNoiseSigma);
@@ -432,15 +430,22 @@ class LFAAnalyzer {
     }
 
     _computeNoiseSigma(topHat) {
-        // Collect lower 60% values to estimate background fluctuation
-        const sorted = Array.from(topHat).sort((a, b) => a - b);
-        const cutoff = Math.floor(sorted.length * 0.60);
+        const len = topHat.length;
+        // Collect middle 80% to avoid boundary edge shadows
+        const inner = [];
+        const start = Math.floor(len * 0.08);
+        const end = Math.floor(len * 0.92);
+        for (let i = start; i < end; i++) {
+            inner.push(topHat[i]);
+        }
+        inner.sort((a, b) => a - b);
+        const cutoff = Math.floor(inner.length * 0.65);
         let sumSq = 0;
         for (let i = 0; i < cutoff; i++) {
-            sumSq += sorted[i] * sorted[i];
+            sumSq += inner[i] * inner[i];
         }
         const sigma = Math.sqrt(sumSq / (cutoff || 1));
-        return Math.max(0.002, sigma);
+        return Math.max(0.001, sigma);
     }
 
     _validatePeak(signal, startIdx, endIdx, absoluteMin, statisticalMin) {
@@ -448,11 +453,21 @@ class LFAAnalyzer {
         let maxVal = 0;
         let peakIdx = -1;
 
-        // Local maxima search
+        // 1. Search for local maxima
         for (let i = startIdx; i < endIdx; i++) {
-            if (signal[i] > maxVal && signal[i] > signal[i - 1] && signal[i] > signal[i + 1]) {
+            if (signal[i] > maxVal && signal[i] >= signal[i - 1] && signal[i] >= signal[i + 1]) {
                 maxVal = signal[i];
                 peakIdx = i;
+            }
+        }
+
+        // 2. Fallback: If no strict local maxima, find absolute max in range
+        if (peakIdx === -1) {
+            for (let i = startIdx; i < endIdx; i++) {
+                if (signal[i] > maxVal) {
+                    maxVal = signal[i];
+                    peakIdx = i;
+                }
             }
         }
 
@@ -460,7 +475,7 @@ class LFAAnalyzer {
             return {
                 detected: false,
                 index: peakIdx !== -1 ? peakIdx : Math.round((startIdx + endIdx) / 2),
-                height: maxVal,
+                height: Math.round(maxVal * 1000) / 1000,
                 auc: 0,
                 fwhm: 0,
                 range: [startIdx, endIdx]
@@ -470,17 +485,17 @@ class LFAAnalyzer {
         // Measure Full-Width at Half-Maximum (FWHM)
         const halfMax = maxVal * 0.50;
         let left = peakIdx;
-        while (left > startIdx && signal[left] > halfMax) left--;
+        while (left > Math.max(0, startIdx - 10) && signal[left] > halfMax) left--;
         let right = peakIdx;
-        while (right < endIdx && signal[right] > halfMax) right++;
-        const fwhm = right - left;
+        while (right < Math.min(signal.length - 1, endIdx + 10) && signal[right] > halfMax) right++;
+        const fwhm = Math.max(1, right - left);
 
-        // Reject if peak is too broad (illumination shadow artifact) or single-pixel spike
-        if (fwhm < this.config.minPeakFWHM || fwhm > this.config.maxPeakFWHM) {
+        // Reject if peak is too broad (illumination shadow artifact)
+        if (fwhm > this.config.maxPeakFWHM) {
             return {
                 detected: false,
                 index: peakIdx,
-                height: maxVal,
+                height: Math.round(maxVal * 1000) / 1000,
                 auc: 0,
                 fwhm,
                 range: [left, right],
@@ -522,7 +537,6 @@ class LFAAnalyzer {
         }
 
         // STRICT RULE 1: If C-Line is NOT detected -> FAIL (Invalid test)
-        // If a blank kit with no lines is tested, it MUST be '실패'
         if (!peakResults.cLine.detected) {
             return {
                 result: '실패',
