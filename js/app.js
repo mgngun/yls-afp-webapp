@@ -411,18 +411,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!analysis || !analysis.visualData) return;
         const vd = analysis.visualData;
 
-        // Render Cropped Strip ROI Canvas (Flow direction: Bottom/Inlet at Top of vertical preview)
+        // Render Cropped Strip ROI Canvas (Upright: C-line at top, T-line/Sample Inlet at bottom)
         const stripC = elements.croppedStripCanvas;
         if (vd.stripCanvas) {
             stripC.width = vd.stripCanvas.width;
             stripC.height = vd.stripCanvas.height;
             const sCtx = stripC.getContext('2d');
-            sCtx.save();
-            // Flip vertically so bottom (sample well / inlet) is at the top matching flow
-            sCtx.translate(0, stripC.height);
-            sCtx.scale(1, -1);
+            sCtx.clearRect(0, 0, stripC.width, stripC.height);
             sCtx.drawImage(vd.stripCanvas, 0, 0);
-            sCtx.restore();
         }
 
         // Render 1D Optical Profile Graph
