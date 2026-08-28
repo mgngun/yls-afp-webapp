@@ -264,7 +264,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     facingMode: deviceId ? undefined : { ideal: 'environment' },
                     width: { ideal: 1920, min: 1280 },
                     height: { ideal: 1080, min: 720 },
-                    // Continuous autofocus request for macro focus on test strip
                     focusMode: { ideal: 'continuous' },
                     advanced: [
                         { focusMode: 'continuous' }
@@ -291,7 +290,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Re-check labels after stream permission is granted
             if (devices.length === 0 || !devices[0].label) {
                 await updateAvailableCameras();
             }
@@ -405,11 +403,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Save result to History
                 saveResultRecord(result);
 
-                // Auto-sync to Google Sheets if configured
-                if (state.sheetsSync.isConfigured()) {
-                    state.sheetsSync.syncResult(result, state.currentUser).catch(err => {
-                        console.warn('Auto Google Sheets sync skipped/failed:', err);
-                    });
+                // Auto-sync to Google Sheets if configured (safe try-catch to never block UI)
+                try {
+                    if (state.sheetsSync && typeof state.sheetsSync.isConfigured === 'function' && state.sheetsSync.isConfigured()) {
+                        state.sheetsSync.syncResult(result, state.currentUser).catch(err => {
+                            console.warn('Auto Google Sheets sync skipped/failed:', err);
+                        });
+                    }
+                } catch (syncErr) {
+                    console.warn('Google sheets sync warning:', syncErr);
                 }
 
                 // Render Results View
@@ -666,7 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // -------------------------------------------------------------
     if (elements.btnOpenSheetsSettings) {
         elements.btnOpenSheetsSettings.addEventListener('click', () => {
-            const cfg = state.sheetsSync.getConfig();
+            const cfg = state.sheetsSync.getConfig ? state.sheetsSync.getConfig() : {};
             elements.inputSheetId.value = cfg.sheetId || '';
             elements.inputWebhookUrl.value = cfg.webhookUrl || '';
             elements.modalSheets.classList.add('active');

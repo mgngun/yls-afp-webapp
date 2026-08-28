@@ -23,9 +23,34 @@ class GoogleSheetsSync {
         };
     }
 
+    getConfig() {
+        return this.config || this.loadConfig();
+    }
+
+    isConfigured() {
+        return !!(this.config && this.config.webhookUrl && this.config.enabled);
+    }
+
     saveConfig(newConfig) {
         this.config = { ...this.config, ...newConfig };
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.config));
+    }
+
+    async syncResult(analysisResult, user = {}) {
+        if (!analysisResult) return;
+        const diag = analysisResult.diagnosis || {};
+        return this.recordResult({
+            timestamp: this.formatTimestamp(new Date()),
+            userId: user.nickname || user.id || 'guest',
+            cLineStatus: diag.cLineStatus,
+            tLineStatus: diag.tLineStatus,
+            cLineDetected: diag.cLineDetected,
+            tLineDetected: diag.tLineDetected,
+            result: diag.result,
+            resultEnglish: diag.resultEnglish,
+            concentration: diag.concentration,
+            errorReason: diag.errorReason
+        });
     }
 
     /**
