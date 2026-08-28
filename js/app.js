@@ -17,8 +17,13 @@ document.addEventListener('DOMContentLoaded', () => {
         videoDevices: [],
         currentCameraIndex: 0,
         capturedCanvas: null,
-        analyzer: new LFAAnalyzer(),
-        sheetsSync: new GoogleSheetsSync(),
+        analyzer: typeof LFAAnalyzer === 'function' ? new LFAAnalyzer() : null,
+        sheetsSync: typeof GoogleSheetsSync === 'function' ? new GoogleSheetsSync() : {
+            isConfigured: () => false,
+            getConfig: () => ({}),
+            saveConfig: () => {},
+            syncResult: async () => {}
+        },
         activeView: 'view-login',
         lastAnalysisResult: null
     };
@@ -97,7 +102,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!elements.toast) return;
         elements.toast.textContent = msg;
         elements.toast.classList.add('show');
-        setTimeout(() => elements.toast.classList.remove('show'), 2500);
+        setTimeout(() => {
+            if (elements.toast) elements.toast.classList.remove('show');
+        }, 3000);
     }
 
     function updateClock() {
@@ -112,6 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function navigateTo(viewName) {
         state.activeView = viewName;
         Object.entries(elements.views).forEach(([name, el]) => {
+            if (!el) return;
             if (name === viewName) {
                 el.classList.add('active');
             } else {
@@ -151,19 +159,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function refreshHomeUI() {
         const nick = state.currentUser.nickname;
         if (nick) {
-            elements.nicknameSetupBox.style.display = 'none';
-            elements.greetingBanner.style.display = 'flex';
-            elements.userDisplayName.textContent = nick;
+            if (elements.nicknameSetupBox) elements.nicknameSetupBox.style.display = 'none';
+            if (elements.greetingBanner) elements.greetingBanner.style.display = 'flex';
+            if (elements.userDisplayName) elements.userDisplayName.textContent = nick;
         } else {
-            elements.nicknameSetupBox.style.display = 'block';
-            elements.greetingBanner.style.display = 'none';
-            elements.inputNickname.value = '';
+            if (elements.nicknameSetupBox) elements.nicknameSetupBox.style.display = 'block';
+            if (elements.greetingBanner) elements.greetingBanner.style.display = 'none';
+            if (elements.inputNickname) elements.inputNickname.value = '';
         }
     }
 
     if (elements.btnSaveNickname) {
         elements.btnSaveNickname.addEventListener('click', () => {
-            const val = elements.inputNickname.value.trim();
+            const val = elements.inputNickname ? elements.inputNickname.value.trim() : '';
             if (!val) {
                 showToast('닉네임을 입력해 주세요.');
                 return;
@@ -178,10 +186,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (elements.btnChangeNickname) {
         elements.btnChangeNickname.addEventListener('click', () => {
-            elements.nicknameSetupBox.style.display = 'block';
-            elements.greetingBanner.style.display = 'none';
-            elements.inputNickname.value = state.currentUser.nickname;
-            elements.inputNickname.focus();
+            if (elements.nicknameSetupBox) elements.nicknameSetupBox.style.display = 'block';
+            if (elements.greetingBanner) elements.greetingBanner.style.display = 'none';
+            if (elements.inputNickname) {
+                elements.inputNickname.value = state.currentUser.nickname;
+                elements.inputNickname.focus();
+            }
         });
     }
 
@@ -189,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.btnStartTest.addEventListener('click', () => {
             if (!state.currentUser.nickname) {
                 showToast('검사를 시작하기 전에 닉네임을 먼저 설정해 주세요.');
-                elements.inputNickname.focus();
+                if (elements.inputNickname) elements.inputNickname.focus();
                 return;
             }
             navigateTo('camera');
@@ -264,20 +274,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     facingMode: deviceId ? undefined : { ideal: 'environment' },
                     width: { ideal: 1920, min: 1280 },
                     height: { ideal: 1080, min: 720 },
-                    focusMode: { ideal: 'continuous' },
-                    advanced: [
-                        { focusMode: 'continuous' }
-                    ]
+                    focusMode: { ideal: 'continuous' }
                 },
                 audio: false
             };
 
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             state.stream = stream;
-            elements.cameraVideo.srcObject = stream;
-            await elements.cameraVideo.play();
+            if (elements.cameraVideo) {
+                elements.cameraVideo.srcObject = stream;
+                await elements.cameraVideo.play();
+            }
 
-            // Apply hardware focus constraints if supported
+            // Apply hardware continuous focus if supported
             const track = stream.getVideoTracks()[0];
             if (track && typeof track.applyConstraints === 'function') {
                 try {
@@ -285,9 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (caps.focusMode && caps.focusMode.includes('continuous')) {
                         await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
                     }
-                } catch (focusErr) {
-                    console.log('Focus constraint note:', focusErr);
-                }
+                } catch (focusErr) {}
             }
 
             if (devices.length === 0 || !devices[0].label) {
@@ -348,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elements.btnCapturePhoto) {
         elements.btnCapturePhoto.addEventListener('click', () => {
             let captureCanvas;
-            if (state.stream && elements.cameraVideo.videoWidth > 0) {
+            if (state.stream && elements.cameraVideo && elements.cameraVideo.videoWidth > 0) {
                 const vw = elements.cameraVideo.videoWidth;
                 const vh = elements.cameraVideo.videoHeight;
                 captureCanvas = document.createElement('canvas');
@@ -356,13 +363,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 captureCanvas.height = vh;
                 const ctx = captureCanvas.getContext('2d');
                 ctx.drawImage(elements.cameraVideo, 0, 0, vw, vh);
-            } else {
+            } else if (typeof LFATestSamples !== 'undefined' && LFATestSamples.createSyntheticKit) {
                 // Use default synthetic sample if camera not streaming
                 captureCanvas = LFATestSamples.createSyntheticKit({
                     cLine: 0.88,
                     tLine: 0.45,
                     noise: 0.02
                 });
+            } else {
+                captureCanvas = document.createElement('canvas');
+                captureCanvas.width = 640;
+                captureCanvas.height = 480;
             }
 
             openConfirmationModal(captureCanvas);
@@ -372,38 +383,50 @@ document.addEventListener('DOMContentLoaded', () => {
     function openConfirmationModal(canvas) {
         state.capturedCanvas = canvas;
         const pCanvas = elements.confirmPreviewCanvas;
-        pCanvas.width = canvas.width;
-        pCanvas.height = canvas.height;
-        const ctx = pCanvas.getContext('2d');
-        ctx.drawImage(canvas, 0, 0);
+        if (pCanvas) {
+            pCanvas.width = canvas.width;
+            pCanvas.height = canvas.height;
+            const ctx = pCanvas.getContext('2d');
+            ctx.drawImage(canvas, 0, 0);
+        }
 
-        elements.modalConfirm.classList.add('active');
+        if (elements.modalConfirm) {
+            elements.modalConfirm.classList.add('active');
+        }
     }
 
     if (elements.btnConfirmNo) {
         elements.btnConfirmNo.addEventListener('click', () => {
-            elements.modalConfirm.classList.remove('active');
+            if (elements.modalConfirm) elements.modalConfirm.classList.remove('active');
             state.capturedCanvas = null;
         });
     }
 
     if (elements.btnConfirmYes) {
         elements.btnConfirmYes.addEventListener('click', async () => {
-            elements.modalConfirm.classList.remove('active');
+            if (elements.modalConfirm) elements.modalConfirm.classList.remove('active');
             if (!state.capturedCanvas) return;
 
             // Show Analysis Loading Animation
-            elements.analyzingOverlay.classList.add('active');
+            if (elements.analyzingOverlay) elements.analyzingOverlay.classList.add('active');
 
             try {
+                if (!state.analyzer) {
+                    state.analyzer = new LFAAnalyzer();
+                }
+
                 // Execute Robust AI Optical Analysis
                 const result = await state.analyzer.analyze(state.capturedCanvas);
                 state.lastAnalysisResult = result;
 
                 // Save result to History
-                saveResultRecord(result);
+                try {
+                    saveResultRecord(result);
+                } catch (recErr) {
+                    console.warn('Record save error:', recErr);
+                }
 
-                // Auto-sync to Google Sheets if configured (safe try-catch to never block UI)
+                // Auto-sync to Google Sheets if configured (completely isolated try-catch)
                 try {
                     if (state.sheetsSync && typeof state.sheetsSync.isConfigured === 'function' && state.sheetsSync.isConfigured()) {
                         state.sheetsSync.syncResult(result, state.currentUser).catch(err => {
@@ -419,9 +442,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 navigateTo('results');
             } catch (err) {
                 console.error('Diagnosis failure:', err);
-                showToast('분석 중 오류가 발생했습니다: ' + (err.message || '알 수 없는 오류'));
+                showToast('분석 중 오류: ' + (err.message || String(err)));
             } finally {
-                elements.analyzingOverlay.classList.remove('active');
+                if (elements.analyzingOverlay) elements.analyzingOverlay.classList.remove('active');
             }
         });
     }
@@ -430,16 +453,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // Results & Visualization
     // -------------------------------------------------------------
     function saveResultRecord(analysis) {
+        if (!analysis || !analysis.diagnosis) return;
         const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
+        const diag = analysis.diagnosis;
         const record = {
             id: 'REC_' + Date.now(),
             timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
             dateStr: new Date().toISOString().split('T')[0],
-            result: analysis.diagnosis.result,
-            concentration: analysis.diagnosis.concentration,
-            concentrationStr: analysis.diagnosis.concentrationStr,
-            tcRatio: analysis.metrics.tcRatio,
-            userNickname: state.currentUser.nickname
+            result: diag.result || '실패',
+            concentration: diag.concentration,
+            concentrationStr: diag.concentrationStr || '-',
+            tcRatio: (analysis.metrics && analysis.metrics.tcRatio) ? analysis.metrics.tcRatio : null,
+            userNickname: state.currentUser.nickname || 'yelloi'
         };
         history.unshift(record);
         if (history.length > 50) history.pop();
@@ -447,41 +472,46 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function displayDiagnosticResult(analysis) {
+        if (!analysis || !analysis.diagnosis) return;
         const diag = analysis.diagnosis;
         const res = diag.result; // '양성', '음성', '실패'
 
-        elements.resultUserId.textContent = state.currentUser.nickname || 'yelloi';
+        if (elements.resultUserId) {
+            elements.resultUserId.textContent = state.currentUser.nickname || 'yelloi';
+        }
 
-        // Update Big Badge
-        elements.latestResultBadge.className = 'status-badge-lg';
-        elements.resultTagBadge.className = 'status-tag-badge';
+        if (elements.latestResultBadge && elements.resultTagBadge && elements.resultValDisplay) {
+            elements.latestResultBadge.className = 'status-badge-lg';
+            elements.resultTagBadge.className = 'status-tag-badge';
 
-        if (res === '양성') {
-            elements.latestResultBadge.classList.add('badge-positive');
-            elements.latestResultBadge.textContent = '양성 (검출)';
-            elements.resultTagBadge.classList.add('badge-positive');
-            elements.resultTagBadge.textContent = '양성';
-            elements.resultValDisplay.textContent = `${diag.concentrationStr} mg/dL`;
-        } else if (res === '음성') {
-            elements.latestResultBadge.classList.add('badge-negative');
-            elements.latestResultBadge.textContent = '음성 (정상)';
-            elements.resultTagBadge.classList.add('badge-negative');
-            elements.resultTagBadge.textContent = '음성';
-            elements.resultValDisplay.textContent = '-';
-        } else {
-            elements.latestResultBadge.classList.add('badge-invalid');
-            elements.latestResultBadge.textContent = '검사 실패';
-            elements.resultTagBadge.classList.add('badge-invalid');
-            elements.resultTagBadge.textContent = '실패';
-            elements.resultValDisplay.textContent = '-';
+            if (res === '양성') {
+                elements.latestResultBadge.classList.add('badge-positive');
+                elements.latestResultBadge.textContent = '양성 (검출)';
+                elements.resultTagBadge.classList.add('badge-positive');
+                elements.resultTagBadge.textContent = '양성';
+                elements.resultValDisplay.textContent = `${diag.concentrationStr || '0.00'} mg/dL`;
+            } else if (res === '음성') {
+                elements.latestResultBadge.classList.add('badge-negative');
+                elements.latestResultBadge.textContent = '음성 (정상)';
+                elements.resultTagBadge.classList.add('badge-negative');
+                elements.resultTagBadge.textContent = '음성';
+                elements.resultValDisplay.textContent = '-';
+            } else {
+                elements.latestResultBadge.classList.add('badge-invalid');
+                elements.latestResultBadge.textContent = '검사 실패';
+                elements.resultTagBadge.classList.add('badge-invalid');
+                elements.resultTagBadge.textContent = '실패';
+                elements.resultValDisplay.textContent = '-';
+            }
         }
 
         renderDetailedAnalysis(analysis);
     }
 
     function renderResultsTable() {
-        const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
         const tbody = elements.resultsTableBody;
+        if (!tbody) return;
+        const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
         tbody.innerHTML = '';
 
         if (history.length === 0) {
@@ -493,7 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const tr = document.createElement('tr');
             let resultClass = 'col-negative';
             let resKorean = '음성';
-            let valStr = rec.concentrationStr ? `${rec.concentrationStr} mg/dL` : '-';
+            let valStr = rec.concentrationStr && rec.concentrationStr !== '-' ? `${rec.concentrationStr} mg/dL` : '-';
 
             if (rec.result === '양성') {
                 resultClass = 'col-positive';
@@ -519,7 +549,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Render Cropped Strip ROI Canvas (Upright: C-line at top, T-line/Sample Inlet at bottom)
         const stripC = elements.croppedStripCanvas;
-        if (vd.stripCanvas) {
+        if (stripC && vd.stripCanvas) {
             stripC.width = vd.stripCanvas.width;
             stripC.height = vd.stripCanvas.height;
             const sCtx = stripC.getContext('2d');
@@ -529,15 +559,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Render 1D Optical Profile Graph
         const gCanvas = elements.profileGraphCanvas;
+        if (!gCanvas) return;
         const gCtx = gCanvas.getContext('2d');
-        const gw = (gCanvas.width = gCanvas.parentElement.clientWidth || 240);
+        const gw = (gCanvas.width = gCanvas.parentElement ? gCanvas.parentElement.clientWidth || 240 : 240);
         const gh = (gCanvas.height = 140);
 
         gCtx.clearRect(0, 0, gw, gh);
 
         const profile = vd.greenProfile;
         const baseline = vd.baseline;
-        const len = profile.length;
+        const len = profile ? profile.length : 0;
 
         if (len > 0) {
             // Find min and max for scaling
@@ -558,17 +589,19 @@ document.addEventListener('DOMContentLoaded', () => {
             gCtx.stroke();
 
             // Draw Baseline (Dashed Blue Line)
-            gCtx.strokeStyle = '#3b82f6';
-            gCtx.lineWidth = 1.5;
-            gCtx.setLineDash([4, 4]);
-            gCtx.beginPath();
-            for (let i = 0; i < len; i++) {
-                const x = (i / (len - 1)) * gw;
-                const y = gh - ((baseline[i] - minP) / range) * (gh * 0.75) - gh * 0.12;
-                if (i === 0) gCtx.moveTo(x, y); else gCtx.lineTo(x, y);
+            if (baseline) {
+                gCtx.strokeStyle = '#3b82f6';
+                gCtx.lineWidth = 1.5;
+                gCtx.setLineDash([4, 4]);
+                gCtx.beginPath();
+                for (let i = 0; i < len; i++) {
+                    const x = (i / (len - 1)) * gw;
+                    const y = gh - ((baseline[i] - minP) / range) * (gh * 0.75) - gh * 0.12;
+                    if (i === 0) gCtx.moveTo(x, y); else gCtx.lineTo(x, y);
+                }
+                gCtx.stroke();
+                gCtx.setLineDash([]);
             }
-            gCtx.stroke();
-            gCtx.setLineDash([]);
 
             // Draw Green Profile (Solid Green Line)
             gCtx.strokeStyle = '#059669';
@@ -603,18 +636,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Metrics
-        const m = analysis.metrics;
-        elements.metricTHeight.textContent = m.tPeakHeight ? m.tPeakHeight.toFixed(3) : '0.000';
-        elements.metricCHeight.textContent = m.cPeakHeight ? m.cPeakHeight.toFixed(3) : '0.000';
-        elements.metricTcRatio.textContent = m.tcRatio ? m.tcRatio.toFixed(3) : '-';
-        elements.metricSnr.textContent = m.signalToNoise ? m.signalToNoise.toFixed(1) + ' dB' : '-';
+        const m = analysis.metrics || {};
+        if (elements.metricTHeight) elements.metricTHeight.textContent = m.tPeakHeight != null ? m.tPeakHeight.toFixed(3) : '0.000';
+        if (elements.metricCHeight) elements.metricCHeight.textContent = m.cPeakHeight != null ? m.cPeakHeight.toFixed(3) : '0.000';
+        if (elements.metricTcRatio) elements.metricTcRatio.textContent = m.tcRatio != null && m.tcRatio > 0 ? m.tcRatio.toFixed(3) : '-';
+        if (elements.metricSnr) elements.metricSnr.textContent = m.signalToNoise != null && m.signalToNoise > 0 ? m.signalToNoise.toFixed(1) + ' dB' : '-';
     }
 
     if (elements.btnToggleDetails) {
         elements.btnToggleDetails.addEventListener('click', () => {
+            if (!elements.analysisDetailsPanel) return;
             const isShown = elements.analysisDetailsPanel.classList.toggle('show');
-            elements.btnToggleDetails.querySelector('span').textContent = isShown ? 
-                '정밀 AI 광학 프로파일 분석 접기' : '정밀 AI 광학 프로파일 분석 보기';
+            const span = elements.btnToggleDetails.querySelector('span');
+            if (span) {
+                span.textContent = isShown ? '정밀 AI 광학 프로파일 분석 접기' : '정밀 AI 광학 프로파일 분석 보기';
+            }
             if (isShown && state.lastAnalysisResult) {
                 renderDetailedAnalysis(state.lastAnalysisResult);
             }
@@ -633,21 +669,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elements.btnOpenSamples) {
         elements.btnOpenSamples.addEventListener('click', () => {
             populateSamplesList();
-            elements.modalSamples.classList.add('active');
+            if (elements.modalSamples) elements.modalSamples.classList.add('active');
         });
     }
 
     if (elements.btnCloseSamples) {
         elements.btnCloseSamples.addEventListener('click', () => {
-            elements.modalSamples.classList.remove('active');
+            if (elements.modalSamples) elements.modalSamples.classList.remove('active');
         });
     }
 
     function populateSamplesList() {
         const container = elements.sampleListContainer;
+        if (!container || typeof LFATestSamples === 'undefined') return;
         container.innerHTML = '';
 
-        LFATestSamples.samples.forEach(sample => {
+        (LFATestSamples.samples || []).forEach(sample => {
             const card = document.createElement('div');
             card.className = 'sample-card';
             card.innerHTML = `
@@ -655,7 +692,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="sample-desc">${sample.description}</div>
             `;
             card.addEventListener('click', () => {
-                elements.modalSamples.classList.remove('active');
+                if (elements.modalSamples) elements.modalSamples.classList.remove('active');
                 const syntheticCanvas = LFATestSamples.createSyntheticKit(sample.params);
                 openConfirmationModal(syntheticCanvas);
             });
@@ -668,25 +705,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // -------------------------------------------------------------
     if (elements.btnOpenSheetsSettings) {
         elements.btnOpenSheetsSettings.addEventListener('click', () => {
-            const cfg = state.sheetsSync.getConfig ? state.sheetsSync.getConfig() : {};
-            elements.inputSheetId.value = cfg.sheetId || '';
-            elements.inputWebhookUrl.value = cfg.webhookUrl || '';
-            elements.modalSheets.classList.add('active');
+            const cfg = (state.sheetsSync && typeof state.sheetsSync.getConfig === 'function') ? state.sheetsSync.getConfig() : {};
+            if (elements.inputSheetId) elements.inputSheetId.value = cfg.sheetId || '';
+            if (elements.inputWebhookUrl) elements.inputWebhookUrl.value = cfg.webhookUrl || '';
+            if (elements.modalSheets) elements.modalSheets.classList.add('active');
         });
     }
 
     if (elements.btnCloseSheets) {
         elements.btnCloseSheets.addEventListener('click', () => {
-            elements.modalSheets.classList.remove('active');
+            if (elements.modalSheets) elements.modalSheets.classList.remove('active');
         });
     }
 
     if (elements.btnSaveSheetsConfig) {
         elements.btnSaveSheetsConfig.addEventListener('click', () => {
-            const sheetId = elements.inputSheetId.value.trim();
-            const webhookUrl = elements.inputWebhookUrl.value.trim();
-            state.sheetsSync.saveConfig({ sheetId, webhookUrl });
-            elements.modalSheets.classList.remove('active');
+            const sheetId = elements.inputSheetId ? elements.inputSheetId.value.trim() : '';
+            const webhookUrl = elements.inputWebhookUrl ? elements.inputWebhookUrl.value.trim() : '';
+            if (state.sheetsSync && typeof state.sheetsSync.saveConfig === 'function') {
+                state.sheetsSync.saveConfig({ sheetId, webhookUrl });
+            }
+            if (elements.modalSheets) elements.modalSheets.classList.remove('active');
             showToast('구글시트 연동 정보가 저장되었습니다.');
         });
     }
