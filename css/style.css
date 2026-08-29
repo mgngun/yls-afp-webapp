@@ -189,6 +189,19 @@ body {
     width: 100%;
 }
 
+.kit-svg-render {
+    width: 100%;
+    max-width: 340px;
+    height: auto;
+    max-height: 420px;
+    transition: transform 0.35s ease;
+}
+
+.kit-svg-render:hover,
+.kit-visual-card:hover .kit-svg-render {
+    transform: scale(1.02);
+}
+
 .kit-photo {
     width: 380px;
     max-width: 98%;
