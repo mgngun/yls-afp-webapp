@@ -19,7 +19,7 @@
     --primary: #5ec5d6;
     --primary-hover: #4bb3c4;
     --primary-glow: rgba(94, 197, 214, 0.35);
-    --bg-app: #E5F9FA;
+    --bg-app: #E2F7FA;
     --card-bg: #ffffff;
     --card-border: #cceef2;
     --text-main: #1e293b;
@@ -42,7 +42,7 @@
 
 html, body {
     width: 100%; height: 100%;
-    background-color: #E5F9FA;
+    background-color: #E2F7FA;
     font-family: var(--font-family);
     color: var(--text-main);
     display: flex;
@@ -55,7 +55,7 @@ html, body {
 .app-container {
     width: 100%; max-width: 440px;
     height: 100%; max-height: 920px;
-    background-color: #E5F9FA;
+    background-color: #E2F7FA;
     position: relative;
     display: flex;
     flex-direction: column;
@@ -122,14 +122,14 @@ html, body {
 
 /* LOGIN VIEW */
 #view-login {
-    background-color: #E5F9FA;
+    background-color: #E2F7FA;
     padding: 24px 24px 20px;
     justify-content: space-between;
     overflow-y: auto;
 }
 /* Kit Visual Card */
 .kit-visual-card {
-    background-color: #E5F9FA;
+    background-color: #E2F7FA;
     border: none; padding: 0;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
@@ -141,8 +141,8 @@ html, body {
     max-height: 440px;
     object-fit: contain;
     display: block;
-    background-color: #E5F9FA;
-    mix-blend-mode: multiply; /* 키트 이미지 배경을 투명화하여 #E5F9FA와 완전 일치 */
+    background-color: #E2F7FA;
+    mix-blend-mode: multiply; /* 키트 이미지 배경을 투명화하여 #E2F7FA와 완전 일치 */
     transition: transform 0.35s ease;
 }
 .kit-photo:hover, .kit-visual-card:hover .kit-photo { transform: scale(1.02); }
@@ -150,7 +150,7 @@ html, body {
 .kit-image {
     width: 380px; max-width: 98%; max-height: 440px;
     object-fit: contain;
-    background-color: #E5F9FA;
+    background-color: #E2F7FA;
     mix-blend-mode: multiply;
     transition: transform 0.35s ease;
 }
