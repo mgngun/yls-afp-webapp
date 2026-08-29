@@ -42,7 +42,7 @@
 
 html, body {
     width: 100%; height: 100%;
-    background-color: #c8eef1;
+    background-color: #E5F9FA;
     font-family: var(--font-family);
     color: var(--text-main);
     display: flex;
@@ -55,7 +55,7 @@ html, body {
 .app-container {
     width: 100%; max-width: 440px;
     height: 100%; max-height: 920px;
-    background-color: var(--bg-app);
+    background-color: #E5F9FA;
     position: relative;
     display: flex;
     flex-direction: column;
@@ -70,14 +70,9 @@ html, body {
     .app-container { border-radius: 36px; border: 8px solid #2d3748; height: 92vh; }
 }
 
-/* Status Bar */
-.status-bar {
-    height: 38px; padding: 6px 20px 0;
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 13px; font-weight: 600; color: #475569;
-    z-index: 100; flex-shrink: 0;
-}
-.status-bar-icons { display: flex; gap: 6px; align-items: center; }
+/* Status Bar — hidden (removed from design) */
+.status-bar { display: none; }
+
 
 /* Views */
 .view {
@@ -98,51 +93,81 @@ html, body {
 
 /* Brand */
 .brand-title {
-    font-family: var(--font-gilroy); font-size: 46px; font-weight: 700;
-    letter-spacing: -1px; color: #0f172a; line-height: 1.0; margin-top: 16px;
+    font-family: 'Gilroy', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 46px; /* 기존 35px 대비 1.3배 확대 */
+    font-weight: 700;
+    letter-spacing: -1.0px;
+    color: #000000;
+    line-height: 1.05;
+    margin-top: 52px; /* YLS 새 글자 높이만큼 아래에 위치 */
+    white-space: nowrap;
 }
 .brand-subtitle {
-    font-family: var(--font-gilroy); font-size: 22px; font-weight: 500;
-    color: #1e293b; margin-top: 4px; letter-spacing: -0.3px;
+    font-family: 'Gilroy', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 36.8px; /* 기존 28px 대비 1.3배 확대 (YLS 46px의 정확히 80%) */
+    font-weight: 500;
+    color: #000000;
+    margin-top: 6px;
+    letter-spacing: -0.8px;
+    white-space: nowrap;
+    line-height: 1.1;
 }
 
 /* Footer */
 .app-footer {
     text-align: center; padding-top: 12px; padding-bottom: 4px;
-    font-size: 13px; color: #64748b; font-weight: 400; flex-shrink: 0;
+    font-family: 'Gilroy', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px; color: #1e293b; font-weight: 500; flex-shrink: 0;
 }
 
 /* LOGIN VIEW */
 #view-login {
-    padding: 20px 24px 16px;
-    justify-content: flex-start;
+    background-color: #E5F9FA;
+    padding: 24px 24px 20px;
+    justify-content: space-between;
     overflow-y: auto;
 }
+/* Kit Visual Card */
 .kit-visual-card {
-    background: transparent; border: none; padding: 0;
+    background-color: #E5F9FA;
+    border: none; padding: 0;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    flex: 1; margin: 8px 0; min-height: 160px; width: 100%;
+    flex: 1; margin: 10px 0; min-height: 220px; width: 100%;
 }
+.kit-photo {
+    width: 380px; /* 기존 310px 대비 약 1.3배 추가 확대 */
+    max-width: 98%;
+    max-height: 440px;
+    object-fit: contain;
+    display: block;
+    background-color: #E5F9FA;
+    mix-blend-mode: multiply; /* 키트 이미지 배경을 투명화하여 #E5F9FA와 완전 일치 */
+    transition: transform 0.35s ease;
+}
+.kit-photo:hover, .kit-visual-card:hover .kit-photo { transform: scale(1.02); }
+/* Legacy img fallback */
 .kit-image {
-    width: 200px; max-width: 80%; max-height: 240px;
-    object-fit: contain; transition: transform 0.35s ease;
+    width: 380px; max-width: 98%; max-height: 440px;
+    object-fit: contain;
+    background-color: #E5F9FA;
+    mix-blend-mode: multiply;
+    transition: transform 0.35s ease;
 }
-.kit-visual-card:hover .kit-image { transform: scale(1.03) rotate(-1deg); }
 
 /* LOGIN FORM */
-#view-login { justify-content: flex-start; }
-
 .login-form {
-    display: flex; flex-direction: column; gap: 10px;
-    width: 100%; margin-bottom: 8px; flex-shrink: 0;
+    display: flex; flex-direction: column; gap: 12px;
+    width: 100%; margin-bottom: 12px; flex-shrink: 0;
 }
 
 .login-input {
     width: 100%; height: 50px;
-    background: #ffffff; border: 1.5px solid #cbd5e1;
-    border-radius: var(--radius-sm); padding: 0 16px;
-    font-size: 15px; font-family: var(--font-family);
+    background: #ffffff; border: 1.5px solid #e2e8f0;
+    border-radius: var(--radius-sm); padding: 0 18px;
+    font-size: 16px;
+    font-family: 'Gilroy', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-weight: 500;
     color: var(--text-main); outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -150,13 +175,18 @@ html, body {
     border-color: var(--primary);
     box-shadow: 0 0 0 3px var(--primary-glow);
 }
-.login-input::placeholder { color: #94a3b8; }
+.login-input::placeholder {
+    color: #94a3b8;
+    font-family: 'Gilroy', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-weight: 500;
+}
 
 .btn-login {
     width: 100%; height: 54px;
     background-color: var(--primary); color: #ffffff;
-    font-family: var(--font-gilroy); font-size: 18px; font-weight: 500;
-    letter-spacing: 0.5px; border: none;
+    font-family: 'Gilroy', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 19px; font-weight: 500;
+    letter-spacing: 0.2px; border: none;
     border-radius: var(--radius-md); cursor: pointer;
     box-shadow: 0 4px 14px var(--primary-glow);
     transition: all 0.2s ease; margin-top: 4px;
