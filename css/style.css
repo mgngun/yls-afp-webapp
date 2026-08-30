@@ -608,33 +608,34 @@ body {
    ========================================================================== */
 #view-confirm {
     padding: 0;
-    background-color: var(--bg-app);
+    background-color: #000000;
     overflow: hidden;
 }
 
 .confirm-fullscreen-container {
     width: 100%;
     height: 100%;
-    display: flex;
-    flex-direction: column;
+    position: relative;
 }
 
 .confirm-photo-area {
-    flex: 1;
-    position: relative;
-    background-color: #c8eef1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #000000;
     overflow: hidden;
-    min-height: 0;
 }
 
 #confirm-preview-canvas {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
     display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
 }
 
 .confirm-guide-overlay {
@@ -644,21 +645,21 @@ body {
     width: 100%;
     height: 100%;
     pointer-events: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    z-index: 10;
 }
 
+/* confirm-kit-frame: 카메라의 guide-kit-frame과 동일한 box-shadow overlay + 우선순위는 JS applyStyle로 설정 */
 .confirm-kit-frame {
     position: absolute;
-    top: 50%;
+    top: 46%;
     left: 50%;
     transform: translate(-50%, -50%);
     width: 130px;
     height: 455px;
-    border: 2px solid rgba(255, 34, 34, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.6);
     border-radius: 14px;
     background: transparent;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.80);
     overflow: visible;
 }
 
@@ -676,7 +677,7 @@ body {
 
 .confirm-guide-well {
     position: absolute;
-    top: 75%;
+    top: 80%;
     left: 50%;
     transform: translate(-50%, -50%);
     width: 44px;
@@ -687,20 +688,26 @@ body {
 }
 
 .confirm-bottom-panel {
-    padding: 16px 20px 10px;
-    background-color: var(--bg-app);
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 16px 20px 18px;
+    background: transparent;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 12px;
-    flex-shrink: 0;
+    z-index: 20;
+    pointer-events: auto;
 }
 
 .confirm-question {
     font-size: 15px;
     font-weight: 600;
-    color: #0f172a;
+    color: #ffffff;
     text-align: center;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
 
 .confirm-btn-row {
