@@ -653,13 +653,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const savedRecord = saveResultRecord(result, croppedStrip);
 
-                // Auto-sync to Google Sheets
+                // Auto-sync to Google Sheets (Drive 이미지 업로드 포함)
                 try {
                     if (state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
-                        state.sheetsSync.syncResult(result, state.currentUser,
+                        state.sheetsSync.syncResult(
+                            result, 
+                            state.currentUser,
                             savedRecord?.memo || '',
-                            savedRecord?.cropFilename || '')
-                            .catch(e => console.warn('Sheets sync:', e));
+                            savedRecord?.cropFilename || '',
+                            savedRecord?.cropImageDataUrl || null
+                        ).catch(e => console.warn('Sheets sync:', e));
                     }
                 } catch (_) { }
 
@@ -691,7 +694,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const now = new Date();
         const pad = n => String(n).padStart(2, '0');
         const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-        const fname = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.jpg`;
+        
+        // 파일명 형식: user_ID_timestamp.jpg (예: yelloi_20260830203105.jpg)
+        const fileTimestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        const fname = `${state.currentUser.username}_${fileTimestamp}.jpg`;
 
         // Crop image as base64 JPEG (stored locally) - 빨간 사각 크롭 캔버스 우선 저장
         let cropDataUrl = null;

@@ -43,22 +43,23 @@ class GoogleSheetsSync {
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.config));
     }
 
-    async syncResult(analysisResult, user = {}, memo = '', cropFilename = '') {
+    async syncResult(analysisResult, user = {}, memo = '', cropFilename = '', cropDataUrl = null) {
         if (!analysisResult) return;
         const diag = analysisResult.diagnosis || {};
         return this.recordResult({
-            timestamp:     this.formatTimestamp(new Date()),
-            userId:        user.username || user.nickname || user.id || 'guest',
-            cLineStatus:   diag.cLineStatus,
-            tLineStatus:   diag.tLineStatus,
-            cLineDetected: diag.cLineDetected,
-            tLineDetected: diag.tLineDetected,
-            result:        diag.result,
-            resultEnglish: diag.resultEnglish,
-            concentration: diag.concentration,
-            errorReason:   diag.errorReason,
-            memo:          memo,
-            cropFilename:  cropFilename
+            timestamp:         this.formatTimestamp(new Date()),
+            userId:            user.username || user.nickname || user.id || 'guest',
+            cLineStatus:       diag.cLineStatus,
+            tLineStatus:       diag.tLineStatus,
+            cLineDetected:     diag.cLineDetected,
+            tLineDetected:     diag.tLineDetected,
+            result:            diag.result,
+            resultEnglish:     diag.resultEnglish,
+            concentration:     diag.concentration,
+            errorReason:       diag.errorReason,
+            memo:              memo,
+            cropFilename:      cropFilename,
+            cropImageBase64:   cropDataUrl
         });
     }
 
@@ -70,17 +71,19 @@ class GoogleSheetsSync {
      */
     async recordResult(record) {
         const rowData = {
-            timestamp:  record.timestamp || this.formatTimestamp(new Date()),
-            User_ID:    record.userId    || 'guest',
-            C_line:     record.cLineStatus || (record.cLineDetected ? 'ok' : 'none'),
-            T_line:     record.tLineStatus || (record.tLineDetected ? 'ok' : 'none'),
-            result:     record.resultEnglish ||
-                            (record.result === '양성' ? 'positive' :
-                             record.result === '음성' ? 'negative' : 'fail'),
-            value:      (record.concentration != null) ? record.concentration : '',
-            error:      record.errorReason   || '',
-            Memo:       record.memo          || '',
-            Crop_image: record.cropFilename  || ''
+            timestamp:         record.timestamp || this.formatTimestamp(new Date()),
+            User_ID:           record.userId    || 'guest',
+            C_line:            record.cLineStatus || (record.cLineDetected ? 'ok' : 'none'),
+            T_line:            record.tLineStatus || (record.tLineDetected ? 'ok' : 'none'),
+            result:            record.resultEnglish ||
+                                (record.result === '양성' ? 'positive' :
+                                 record.result === '음성' ? 'negative' : 'fail'),
+            value:             (record.concentration != null) ? record.concentration : '',
+            error:             record.errorReason   || '',
+            Memo:              record.memo          || '',
+            Crop_image:        record.cropFilename  || '',
+            crop_filename:     record.cropFilename  || '',
+            crop_image_base64: record.cropImageBase64 || ''
         };
 
         // 1. Add to local queue / history
