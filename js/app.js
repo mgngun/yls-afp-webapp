@@ -263,37 +263,137 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // CAMERA
+    // CAMERA (1x 일반 메인 카메라 자동 선택)
     // ─────────────────────────────────────────────────────────────
+    async function getBestMainCameraDeviceId() {
+        try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return null;
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(d => d.kind === 'videoinput');
+            if (videoDevices.length <= 1) return null;
+
+            // 후면 카메라 필터링
+            const backCameras = videoDevices.filter(d => {
+                const label = (d.label || '').toLowerCase();
+                return label.includes('back') || label.includes('rear') || label.includes('environment') || label.includes('후면');
+            });
+
+            const candidateList = backCameras.length > 0 ? backCameras : videoDevices;
+
+            // 초광각(0.5x, 0.6x, ultra-wide)을 피하고 1x 메인 카메라 우선 순위 점수 매기기
+            let bestDevice = null;
+            let bestScore = -999;
+
+            candidateList.forEach(dev => {
+                const label = (dev.label || '').toLowerCase();
+                let score = 0;
+
+                // 감점: 초광각, 광각 0.5x, 매크로
+                if (label.includes('ultra') || label.includes('0.5') || label.includes('0.6') || label.includes('super wide')) {
+                    score -= 50;
+                }
+                if (label.includes('macro') || label.includes('depth')) {
+                    score -= 30;
+                }
+                // 감점: 망원(Telephoto)
+                if (label.includes('tele') || label.includes('zoom') || label.includes('3x') || label.includes('5x') || label.includes('10x')) {
+                    score -= 20;
+                }
+
+                // 가산점: 메인 1x 표준 카메라
+                if (label.includes('main') || label.includes('primary') || label.includes('standard') || label.includes('1x') || label.includes('기본')) {
+                    score += 50;
+                }
+                if (label.includes('wide') && !label.includes('ultra') && !label.includes('super')) {
+                    score += 20; // 일반 광각(1x 표준)
+                }
+                if (label.includes('camera 0') || label.includes('camera2 0') || label.includes('0, facing back')) {
+                    score += 15; // 첫번째 메인 센서
+                }
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestDevice = dev;
+                }
+            });
+
+            return bestDevice ? bestDevice.deviceId : null;
+        } catch (e) {
+            console.warn('Device enumeration error:', e);
+            return null;
+        }
+    }
+
     async function startCamera() {
         try {
             stopCamera();
-            const constraints = {
-                video: {
+
+            // 1단계: 1x 일반 메인 카메라 deviceId 탐색
+            let targetDeviceId = await getBestMainCameraDeviceId();
+
+            // 만약 라벨 권한이 없어 deviceId를 못 찾았을 때 최초 권한 획득 시도
+            let videoConstraints = {
+                facingMode: { ideal: 'environment' },
+                width:  { ideal: 1920, min: 1280 },
+                height: { ideal: 1080, min: 720  }
+            };
+
+            if (targetDeviceId) {
+                videoConstraints.deviceId = { exact: targetDeviceId };
+            }
+
+            let stream;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+            } catch (deviceErr) {
+                console.warn('Target camera failed, fallback to general environment camera:', deviceErr);
+                // 특정 deviceId 실패 시 기본 후면 카메라로 fallback
+                videoConstraints = {
                     facingMode: { ideal: 'environment' },
                     width:  { ideal: 1920, min: 1280 },
                     height: { ideal: 1080, min: 720  }
-                },
-                audio: false
-            };
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                };
+                stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+            }
+
+            // 최초 권한 획득 후 만약 처음 탐색 때 라벨이 비어있었다면 재탐색하여 1x 메인 카메라로 전환
+            if (!targetDeviceId && navigator.mediaDevices.enumerateDevices) {
+                const refreshedDeviceId = await getBestMainCameraDeviceId();
+                if (refreshedDeviceId) {
+                    try {
+                        const newStream = await navigator.mediaDevices.getUserMedia({
+                            video: { deviceId: { exact: refreshedDeviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 } },
+                            audio: false
+                        });
+                        stream.getTracks().forEach(t => t.stop());
+                        stream = newStream;
+                    } catch (_) {}
+                }
+            }
+
             state.stream = stream;
             if (el.cameraVideo) {
                 el.cameraVideo.srcObject = stream;
                 await el.cameraVideo.play();
             }
-            // Request 1.0x zoom + continuous focus
+
+            // 1.0x 표준 줌 배율 + 연속 초점(Continuous Focus) 강제 고정
             const track = stream.getVideoTracks()[0];
             if (track && typeof track.applyConstraints === 'function') {
                 try {
                     const caps = track.getCapabilities ? track.getCapabilities() : {};
-                    const adv  = [{ focusMode: 'continuous' }];
-                    if (caps.zoom) adv[0].zoom = 1.0;
+                    const adv = [{ focusMode: 'continuous' }];
+
+                    // 줌 배율을 1.0x(또는 최소 표준 배율)로 맞추어 광각 왜곡 방지
+                    if (caps.zoom) {
+                        const targetZoom = Math.max(caps.zoom.min || 1, Math.min(1.0, caps.zoom.max || 1));
+                        adv[0].zoom = targetZoom;
+                    }
                     await track.applyConstraints({ advanced: adv });
                 } catch (_) {}
             }
         } catch (err) {
-            console.warn('Camera access:', err);
+            console.warn('Camera access error:', err);
         }
     }
 
