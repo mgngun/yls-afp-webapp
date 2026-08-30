@@ -139,11 +139,13 @@ class GoogleSheetsSync {
     }
 
     async _sendToWebhook(data) {
+        // Google Apps Script no-cors 전송 시 text/plain;charset=utf-8을 사용해야
+        // 큰 Base64 이미지 데이터가 e.postData.contents로 손실 없이 100% 전달됩니다.
         const response = await fetch(this.config.webhookUrl, {
             method: 'POST',
-            mode: 'no-cors', // Standard for Google Apps Script Web Apps
+            mode: 'no-cors',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'text/plain;charset=utf-8'
             },
             body: JSON.stringify(data)
         });

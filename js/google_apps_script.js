@@ -24,7 +24,6 @@ var DRIVE_FOLDER_ID = "1U-3jUSs7tutgovrNeOZE7P5Y_KuBqlwI";
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
-  // 동시 요청 충돌 방지를 위해 최대 30초 대기
   lock.tryLock(30000);
   
   try {
@@ -57,7 +56,7 @@ function doPost(e) {
       data = e.parameter;
     }
     
-    // 1. 데이터 추출
+    // 1. 기본 필드 추출
     var timestamp   = data.timestamp || Utilities.formatDate(new Date(), "Asia/Seoul", "yyyy-MM-dd HH:mm:ss");
     var userId      = data.User_ID || data.userId || "guest";
     var cLine       = data.C_line || data.cLine || "";
@@ -66,11 +65,12 @@ function doPost(e) {
     var value       = data.value !== undefined ? data.value : "";
     var error       = data.error || "";
     var memo        = data.Memo || data.memo || "";
-    var cropImage   = data.Crop_image || data.cropFilename || "";
+    var cropImage   = data.Crop_image || data.cropFilename || (userId + "_" + Utilities.formatDate(new Date(), "Asia/Seoul", "yyyyMMddHHmmss") + ".jpg");
     
-    // 2. 구글 드라이브에 이미지 파일 저장 (Base64가 전달된 경우)
+    // 2. 구글 드라이브에 이미지 파일 저장
     var imageBase64 = data.crop_image_base64 || data.cropImageBase64 || data.imageBase64 || "";
     var driveFileUrl = "";
+    var driveDirectUrl = "";
     var driveFileId  = "";
     
     if (imageBase64 && DRIVE_FOLDER_ID) {
@@ -84,7 +84,7 @@ function doPost(e) {
         }
         
         var decodedBytes = Utilities.base64Decode(pureBase64);
-        var filename = cropImage || (userId + "_" + Utilities.formatDate(new Date(), "Asia/Seoul", "yyyyMMddHHmmss") + ".jpg");
+        var filename = cropImage;
         if (filename.indexOf(".jpg") === -1 && filename.indexOf(".png") === -1) {
           filename += ".jpg";
         }
@@ -97,14 +97,15 @@ function doPost(e) {
           file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
         } catch (_) {}
         
-        driveFileId  = file.getId();
-        driveFileUrl = file.getUrl();
+        driveFileId    = file.getId();
+        driveFileUrl   = "https://drive.google.com/file/d/" + driveFileId + "/view?usp=drivesdk";
+        driveDirectUrl = "https://lh3.googleusercontent.com/d/" + driveFileId;
         
-        // 시트의 Crop_image 열에 구글 드라이브 파일 URL 저장
-        cropImage = driveFileUrl;
+        // 시트의 Crop_image 셀에 클릭 시 바로 이미지가 열리는 HYPERLINK 수식 적용
+        // 형식: =HYPERLINK("https://drive.google.com/file/d/...", "yelloi_20260830203105.jpg")
+        cropImage = '=HYPERLINK("' + driveFileUrl + '", "' + filename + '")';
       } catch (driveErr) {
         Logger.log("Drive save error: " + driveErr.toString());
-        // 드라이브 저장 실패 시 기존 파일명 유지
       }
     }
     
@@ -126,6 +127,7 @@ function doPost(e) {
       message: "Data and image processed successfully",
       timestamp: timestamp,
       driveFileUrl: driveFileUrl,
+      driveDirectUrl: driveDirectUrl,
       driveFileId: driveFileId,
       cropImage: cropImage
     })).setMimeType(ContentService.MimeType.JSON);
