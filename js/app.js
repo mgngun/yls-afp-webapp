@@ -238,7 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ─────────────────────────────────────────────────────────────
-    // LOGOUT (로그아웃: 철 화면으로)
+    // LOGOUT (로그아웃: 첫 화면으로)
     // ─────────────────────────────────────────────────────────────
     if (el.btnLogout) {
         el.btnLogout.addEventListener('click', () => {
@@ -257,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 지난 결과 보기 (검사결과 화마으로)
+    // 지난 결과 보기 (검사결과 화면으로)
     // ─────────────────────────────────────────────────────────────
     if (el.btnViewResults) {
         el.btnViewResults.addEventListener('click', () => {
