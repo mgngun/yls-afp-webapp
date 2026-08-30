@@ -536,6 +536,63 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ── Crop Exact Strip Region from Red Guide Window ──
+    function cropStripFromCapturedCanvas() {
+        if (!state.capturedCanvas) return null;
+        const srcCanvas = state.capturedCanvas;
+        const imgW = srcCanvas.width;
+        const imgH = srcCanvas.height;
+
+        const container = document.querySelector('.camera-container') || document.querySelector('.confirm-photo-area');
+        const dispW = container ? container.offsetWidth : 360;
+        const dispH = container ? container.offsetHeight : 640;
+
+        // guideMetrics가 없을 경우 기본 비례로 계산
+        const m = state.guideMetrics || (() => {
+            const fW = Math.round(dispW / 3);
+            const fH = Math.round(fW * 3.5);
+            const fTop = Math.round(fW / 2);
+            const fLeft = Math.round((dispW - fW) / 2);
+            const sW = Math.round(fW / 3);
+            const sH = Math.round(fW * 2 / 3);
+            const sLeft = Math.round((fW - sW) / 2);
+            const sTop = Math.round(fW * 4 / 3);
+            return { fW, fH, fTop, fLeft, sW, sH, sLeft, sTop };
+        })();
+
+        // 화면 기준 빨간 사각(스트립 윈도우)의 절대 위치
+        const screenX = m.fLeft + m.sLeft;
+        const screenY = m.fTop + m.sTop;
+        const screenW = m.sW;
+        const screenH = m.sH;
+
+        // object-fit: cover 스케일 변환 역계산
+        const scale = Math.max(dispW / imgW, dispH / imgH);
+        const renderW = imgW * scale;
+        const renderH = imgH * scale;
+        const offsetX = (dispW - renderW) / 2;
+        const offsetY = (dispH - renderH) / 2;
+
+        let realX = Math.round((screenX - offsetX) / scale);
+        let realY = Math.round((screenY - offsetY) / scale);
+        let realW = Math.round(screenW / scale);
+        let realH = Math.round(screenH / scale);
+
+        // 경계 제한
+        realX = Math.max(0, Math.min(imgW - 10, realX));
+        realY = Math.max(0, Math.min(imgH - 10, realY));
+        realW = Math.min(imgW - realX, Math.max(10, realW));
+        realH = Math.min(imgH - realY, Math.max(10, realH));
+
+        const cropCanvas = document.createElement('canvas');
+        cropCanvas.width = realW;
+        cropCanvas.height = realH;
+        const cCtx = cropCanvas.getContext('2d');
+        cCtx.drawImage(srcCanvas, realX, realY, realW, realH, 0, 0, realW, realH);
+
+        return cropCanvas;
+    }
+
     // ─────────────────────────────────────────────────────────────
     // CONFIRM SCREEN
     // ─────────────────────────────────────────────────────────────
@@ -554,10 +611,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 if (!state.analyzer) state.analyzer = new LFAAnalyzer();
-                const result = await state.analyzer.analyze(state.capturedCanvas);
+
+                // 사용자가 화면의 빨간 사각에 맞춘 멤브레인 영역만 정확히 크롭
+                const croppedStrip = cropStripFromCapturedCanvas() || state.capturedCanvas;
+
+                // 크롭된 스트립 이미지로 정확한 흡광도 분석 실행
+                const result = await state.analyzer.analyze(croppedStrip, { isPreCropped: true });
+                if (result.visualData) {
+                    result.visualData.stripCanvas = croppedStrip;
+                    result.visualData.previewCanvas = croppedStrip;
+                }
                 state.lastAnalysisResult = result;
 
-                const savedRecord = saveResultRecord(result);
+                const savedRecord = saveResultRecord(result, croppedStrip);
 
                 // Auto-sync to Google Sheets
                 try {
@@ -586,7 +652,7 @@ document.addEventListener('DOMContentLoaded', () => {
     /**
      * Save analysis result with crop image (base64) and profile data for graph popup.
      */
-    function saveResultRecord(analysis) {
+    function saveResultRecord(analysis, croppedCanvas = null) {
         if (!analysis || !analysis.diagnosis) return null;
         const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
         const diag    = analysis.diagnosis;
@@ -596,11 +662,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const ts    = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
         const fname = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.jpg`;
 
-        // Crop image as base64 JPEG (stored locally)
+        // Crop image as base64 JPEG (stored locally) - 빨간 사각 크롭 캔버스 우선 저장
         let cropDataUrl = null;
         try {
-            const sc = analysis.visualData?.previewCanvas || analysis.visualData?.stripCanvas;
-            if (sc) cropDataUrl = sc.toDataURL('image/jpeg', 0.60);
+            const sc = croppedCanvas || analysis.visualData?.stripCanvas || analysis.visualData?.previewCanvas;
+            if (sc) cropDataUrl = sc.toDataURL('image/jpeg', 0.85);
         } catch (_) {}
 
         // Absorbance profile for graph drawing

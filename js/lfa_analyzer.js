@@ -41,8 +41,10 @@ class LFAAnalyzer {
 
     /**
      * Main analysis entry point
+     * @param {HTMLCanvasElement|ImageData|Image} imageSource - Full image or pre-cropped strip canvas
+     * @param {Object} [cropOptions] - Optional pre-cropped strip canvas or custom ROI
      */
-    async analyze(imageSource) {
+    async analyze(imageSource, cropOptions = null) {
         const startTime = performance.now();
         
         try {
@@ -51,11 +53,30 @@ class LFAAnalyzer {
             const ctx = srcCanvas.getContext('2d');
             const imgData = ctx.getImageData(0, 0, srcCanvas.width, srcCanvas.height);
             
-            // 2. Kit Bounding & Perspective Rectification
-            const { rectifiedCanvas, orientation, isFlipped } = this._rectifyKit(srcCanvas, imgData);
-            
-            // 3. Adaptive Precise Membrane ROI Extraction
-            const stripROI = this._extractAdaptiveMembraneROI(rectifiedCanvas);
+            let stripROI;
+            let rectifiedCanvas = srcCanvas;
+
+            // 이미 사용자가 빨간 사각을 직접 크롭해서 넘겨준 경우 (또는 cropOptions.isPreCropped)
+            const isPreCropped = (cropOptions && cropOptions.isPreCropped) || 
+                                 (srcCanvas.height > srcCanvas.width * 1.5 && srcCanvas.width < 500);
+
+            if (isPreCropped) {
+                // 직접 크롭된 빨간 사각 멤브레인 이미지를 그대로 스트립 ROI로 사용
+                stripROI = {
+                    canvas: srcCanvas,
+                    previewCanvas: srcCanvas,
+                    imgData: imgData,
+                    width: srcCanvas.width,
+                    height: srcCanvas.height
+                };
+            } else {
+                // 2. Kit Bounding & Perspective Rectification
+                const { rectifiedCanvas: rectCanvas } = this._rectifyKit(srcCanvas, imgData);
+                rectifiedCanvas = rectCanvas;
+                
+                // 3. Adaptive Precise Membrane ROI Extraction
+                stripROI = this._extractAdaptiveMembraneROI(rectifiedCanvas);
+            }
             
             // 4. Extract Green Channel & 1D Longitudinal Profile
             const { rawProfile, greenProfile } = this._extractColorProfiles(stripROI);
