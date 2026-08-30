@@ -303,14 +303,14 @@ body {
 
 .timeset-greeting {
     font-family: var(--font-gilroy);
-    font-size: 20px;
-    font-weight: 500;
+    font-size: 25px;
+    font-weight: 600;
     color: #0f172a;
     margin-top: 8px;
 }
 
 .timeset-desc {
-    font-size: 15px;
+    font-size: 18px;
     color: #475569;
     line-height: 1.6;
     font-weight: 400;
@@ -358,7 +358,7 @@ body {
 }
 
 .time-unit {
-    font-size: 15px;
+    font-size: 18px;
     font-weight: 600;
     color: #334155;
     font-family: var(--font-family);
@@ -400,7 +400,7 @@ body {
 }
 
 .countdown-label {
-    font-size: 13px;
+    font-size: 18px;
     color: #64748b;
     font-weight: 500;
     text-transform: uppercase;
@@ -425,14 +425,14 @@ body {
 }
 
 .countdown-sep {
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 600;
     color: #475569;
     font-family: var(--font-family);
 }
 
 .countdown-note {
-    font-size: 15px;
+    font-size: 18px;
     color: #94a3b8;
     text-align: center;
     line-height: 1.5;
@@ -514,10 +514,10 @@ body {
     transform: translate(-50%, -50%);
     width: 130px;
     height: 455px;
-    border: 1px solid rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.6);
     border-radius: 14px;
     background: transparent;
-    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.70);
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.80);
     z-index: 10;
     pointer-events: none;
     overflow: visible;
@@ -537,7 +537,7 @@ body {
 
 .guide-sample-well {
     position: absolute;
-    top: 75%;
+    top: 80%;
     left: 50%;
     transform: translate(-50%, -50%);
     width: 44px;
@@ -552,22 +552,23 @@ body {
     bottom: 0;
     left: 0;
     right: 0;
-    padding: 14px 20px 10px;
-    background: linear-gradient(to top, rgba(229, 249, 250, 0.97) 82%, transparent);
+    padding: 16px 20px 18px;
+    background: transparent;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     z-index: 20;
     pointer-events: auto;
 }
 
 .guide-instruction-text {
-    font-size: 14px;
-    font-weight: 600;
-    color: #1e293b;
+    font-size: 15px;
+    font-weight: 500;
+    color: #ffffff;
     text-align: center;
     font-family: var(--font-family);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
 
 .camera-controls-row {
@@ -597,7 +598,8 @@ body {
 }
 
 .app-footer--camera {
-    color: #475569;
+    color: #ffffff;
+    opacity: 0.85;
     font-size: 12px;
 }
 
