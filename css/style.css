@@ -1197,6 +1197,34 @@ body {
 
 .graph-popup-header .popup-title {
     font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.graph-popup-title-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.graph-popup-result-badge {
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+}
+
+.graph-popup-result-badge.badge-positive {
+    color: #e11d48;
+}
+
+.graph-popup-result-badge.badge-negative {
+    color: #059669;
+}
+
+.graph-popup-result-badge.badge-fail {
+    color: #64748b;
 }
 
 .graph-popup-body {
