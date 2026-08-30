@@ -2,7 +2,7 @@
  * YLS LFA Kit AI Diagnostic WebApp Controller
  * v4.0 — 1차 개편 시나리오 전면 반영
  *
- * Flow: Login (yelloi/1234) → Time Setting (countdown) → Camera →
+ * Flow: Login (yelloi/1111) → Time Setting (countdown) → Camera →
  *       Photo Confirm → Results (15/page, memo, absorbance graph popup)
  */
 
