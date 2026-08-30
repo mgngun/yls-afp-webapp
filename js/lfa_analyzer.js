@@ -56,12 +56,12 @@ class LFAAnalyzer {
             let stripROI;
             let rectifiedCanvas = srcCanvas;
 
-            // 이미 사용자가 빨간 사각을 직접 크롭해서 넘겨준 경우 (또는 cropOptions.isPreCropped)
-            const isPreCropped = (cropOptions && cropOptions.isPreCropped) || 
-                                 (srcCanvas.height > srcCanvas.width * 1.5 && srcCanvas.width < 500);
+            // 크롭 옵션이 명시되었거나 세로형 스트립 이미지인 경우
+            const isPreCropped = (cropOptions && cropOptions.isPreCropped === true) ||
+                                 (srcCanvas.height >= srcCanvas.width * 1.2);
 
             if (isPreCropped) {
-                // 직접 크롭된 빨간 사각 멤브레인 이미지를 그대로 스트립 ROI로 사용
+                // 사용자가 화면에서 맞춘 빨간 사각 멤브레인 이미지를 직접 스트립 ROI로 사용
                 stripROI = {
                     canvas: srcCanvas,
                     previewCanvas: srcCanvas,

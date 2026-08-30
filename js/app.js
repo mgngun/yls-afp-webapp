@@ -546,49 +546,58 @@ document.addEventListener('DOMContentLoaded', () => {
         const imgW = srcCanvas.width;
         const imgH = srcCanvas.height;
 
-        const container = document.querySelector('.camera-container') || document.querySelector('.confirm-photo-area');
-        const dispW = container ? container.offsetWidth : 360;
-        const dispH = container ? container.offsetHeight : 640;
+        // 현재 활성화된 confirm 화면의 사진 영역과 빨간 사각 윈도우의 실제 DOM 픽셀 위치 측정
+        const contEl = document.querySelector('.confirm-photo-area') || 
+                       document.querySelector('.camera-container') || 
+                       document.body;
+        const winEl  = document.getElementById('confirm-guide-window') || 
+                       document.querySelector('.guide-window-cutout');
 
-        // guideMetrics가 없을 경우 기본 비례로 계산
-        const m = state.guideMetrics || (() => {
+        const rectCont = contEl ? contEl.getBoundingClientRect() : { left: 0, top: 0, width: 360, height: 640 };
+        const rectWin  = winEl  ? winEl.getBoundingClientRect()  : null;
+
+        const dispW = rectCont.width  || 360;
+        const dispH = rectCont.height || 640;
+
+        let winX, winY, winW, winH;
+
+        if (rectWin && rectWin.width > 0 && rectWin.height > 0) {
+            // 실제 렌더링된 윈도우의 컨테이너 상대 좌표
+            winX = rectWin.left - rectCont.left;
+            winY = rectWin.top  - rectCont.top;
+            winW = rectWin.width;
+            winH = rectWin.height;
+        } else {
+            // DOM 측정이 불가할 때의 비례 fallback
             const fW = Math.round(dispW / 3);
-            const fH = Math.round(fW * 3.5);
             const fTop = Math.round(fW / 2);
             const fLeft = Math.round((dispW - fW) / 2);
-            const sW = Math.round(fW / 3);
-            const sH = Math.round(fW * 2 / 3);
-            const sLeft = Math.round((fW - sW) / 2);
-            const sTop = Math.round(fW * 4 / 3);
-            return { fW, fH, fTop, fLeft, sW, sH, sLeft, sTop };
-        })();
-
-        // 화면 기준 빨간 사각(스트립 윈도우)의 절대 위치
-        const screenX = m.fLeft + m.sLeft;
-        const screenY = m.fTop + m.sTop;
-        const screenW = m.sW;
-        const screenH = m.sH;
+            winW = Math.round(fW / 3);
+            winH = Math.round(fW * 2 / 3);
+            winX = fLeft + Math.round((fW - winW) / 2);
+            winY = fTop  + Math.round(fW * 4 / 3);
+        }
 
         // object-fit: cover 스케일 변환 역계산
-        const scale = Math.max(dispW / imgW, dispH / imgH);
+        const scale   = Math.max(dispW / imgW, dispH / imgH);
         const renderW = imgW * scale;
         const renderH = imgH * scale;
         const offsetX = (dispW - renderW) / 2;
         const offsetY = (dispH - renderH) / 2;
 
-        let realX = Math.round((screenX - offsetX) / scale);
-        let realY = Math.round((screenY - offsetY) / scale);
-        let realW = Math.round(screenW / scale);
-        let realH = Math.round(screenH / scale);
+        let realX = Math.round((winX - offsetX) / scale);
+        let realY = Math.round((winY - offsetY) / scale);
+        let realW = Math.round(winW / scale);
+        let realH = Math.round(winH / scale);
 
-        // 경계 제한
+        // 이미지 경계 안전 제한
         realX = Math.max(0, Math.min(imgW - 10, realX));
         realY = Math.max(0, Math.min(imgH - 10, realY));
-        realW = Math.min(imgW - realX, Math.max(10, realW));
-        realH = Math.min(imgH - realY, Math.max(10, realH));
+        realW = Math.max(10, Math.min(imgW - realX, realW));
+        realH = Math.max(10, Math.min(imgH - realY, realH));
 
         const cropCanvas = document.createElement('canvas');
-        cropCanvas.width = realW;
+        cropCanvas.width  = realW;
         cropCanvas.height = realH;
         const cCtx = cropCanvas.getContext('2d');
         cCtx.drawImage(srcCanvas, realX, realY, realW, realH, 0, 0, realW, realH);
