@@ -132,7 +132,14 @@ document.addEventListener('DOMContentLoaded', () => {
         inputWebhookUrl:  document.getElementById('input-webhook-url'),
         btnSettingsClose: document.getElementById('btn-settings-close'),
         btnSettingsCancel:document.getElementById('btn-settings-cancel'),
-        btnSettingsSave:  document.getElementById('btn-settings-save')
+        btnSettingsSave:  document.getElementById('btn-settings-save'),
+        // Timesetting extras
+        btnLogout:        document.getElementById('btn-logout'),
+        btnViewResults:   document.getElementById('btn-view-results'),
+        // Exit confirm popup
+        exitConfirmPopup: document.getElementById('exit-confirm-popup'),
+        btnExitYes:       document.getElementById('btn-exit-yes'),
+        btnExitNo:        document.getElementById('btn-exit-no')
     };
 
     // ─────────────────────────────────────────────────────────────
@@ -213,6 +220,34 @@ document.addEventListener('DOMContentLoaded', () => {
     [el.inputUsername, el.inputPassword].forEach(inp => {
         if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
     });
+
+    // ─────────────────────────────────────────────────────────────
+    // LOGOUT (로그아웃: 철 화면으로)
+    // ─────────────────────────────────────────────────────────────
+    if (el.btnLogout) {
+        el.btnLogout.addEventListener('click', () => {
+            state.currentUser.isLoggedIn = false;
+            localStorage.removeItem('yls_user_logged_in');
+            localStorage.removeItem('yls_user_name');
+            clearInterval(state.countdownInterval);
+            state.countdownInterval = null;
+            state.countdownRemaining = 0;
+            if (el.displayMin) el.displayMin.textContent = '--';
+            if (el.displaySec) el.displaySec.textContent = '--';
+            if (el.inputUsername) el.inputUsername.value = '';
+            if (el.inputPassword) el.inputPassword.value = '';
+            navigateTo('login');
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 지난 결과 보기 (검사결과 화마으로)
+    // ─────────────────────────────────────────────────────────────
+    if (el.btnViewResults) {
+        el.btnViewResults.addEventListener('click', () => {
+            navigateTo('results');
+        });
+    }
 
     // ─────────────────────────────────────────────────────────────
     // TIME SETTING & COUNTDOWN
@@ -953,6 +988,85 @@ document.addEventListener('DOMContentLoaded', () => {
             updateCameraGuide();
         }
     });
+
+    // ─────────────────────────────────────────────────────────────
+    // ANDROID 뒤로가기 처리 (popstate → 앱 종료 확인 팝업)
+    // ─────────────────────────────────────────────────────────────
+    let exitPopupVisible = false;
+
+    function showExitPopup() {
+        if (!el.exitConfirmPopup) return;
+        exitPopupVisible = true;
+        el.exitConfirmPopup.classList.remove('hidden');
+        // 팝업 표시 후 다시 history stack 쌓아서 연속 뒤로가기 방지
+        history.pushState({ ylsApp: true }, '');
+    }
+
+    function hideExitPopup() {
+        if (!el.exitConfirmPopup) return;
+        exitPopupVisible = false;
+        el.exitConfirmPopup.classList.add('hidden');
+    }
+
+    // 페이지 진입 시 history stack에 더미 state 추가 (뒤로가기 감지용)
+    history.pushState({ ylsApp: true }, '');
+
+    window.addEventListener('popstate', (e) => {
+        if (exitPopupVisible) {
+            // 팝업이 떠 있는 상태에서 또 뒤로가기 → 팝업 닫기
+            hideExitPopup();
+            history.pushState({ ylsApp: true }, '');
+            return;
+        }
+
+        // 카메라/확인 화면에서는 뒤로가기 무시하고 스택 유지
+        if (state.activeView === 'view-camera' || state.activeView === 'view-confirm') {
+            history.pushState({ ylsApp: true }, '');
+            return;
+        }
+
+        // 로그인 화면에서는 앱 종료 확인
+        if (state.activeView === 'view-login') {
+            showExitPopup();
+            return;
+        }
+
+        // 시간설정 화면에서는 앱 종료 확인
+        if (state.activeView === 'view-timesetting') {
+            showExitPopup();
+            return;
+        }
+
+        // 검사결과 화면에서는 시간설정 화면으로 복귀
+        if (state.activeView === 'view-results') {
+            navigateTo('timesetting');
+            history.pushState({ ylsApp: true }, '');
+            return;
+        }
+
+        // 그 외 뒤로가기 무시
+        history.pushState({ ylsApp: true }, '');
+    });
+
+    if (el.btnExitNo) {
+        el.btnExitNo.addEventListener('click', () => {
+            hideExitPopup();
+            history.pushState({ ylsApp: true }, '');
+        });
+    }
+
+    if (el.btnExitYes) {
+        el.btnExitYes.addEventListener('click', () => {
+            // PWA / WebApp 종료 처리
+            try {
+                window.close();
+            } catch (_) {}
+            // window.close()가 실패하는 경우 빈 페이지로 이동
+            try {
+                window.location.replace('about:blank');
+            } catch (_) {}
+        });
+    }
 
     // ─────────────────────────────────────────────────────────────
     // App Startup
