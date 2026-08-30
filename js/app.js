@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─────────────────────────────────────────────────────────────
     // Constants & State
     // ─────────────────────────────────────────────────────────────
-    const VALID_CREDENTIALS = { username: 'yelloi', password: '1234' };
+    const VALID_CREDENTIALS = { username: 'yelloi', password: '1111' };
     const PAGE_SIZE = 15;
 
     const state = {
@@ -19,16 +19,16 @@ document.addEventListener('DOMContentLoaded', () => {
             username: 'yelloi',
             isLoggedIn: false
         },
-        stream:              null,
-        capturedCanvas:      null,
-        analyzer:            typeof LFAAnalyzer      === 'function' ? new LFAAnalyzer()      : null,
-        sheetsSync:          typeof GoogleSheetsSync === 'function' ? new GoogleSheetsSync() : null,
-        activeView:          'view-login',
-        lastAnalysisResult:  null,
-        countdownInterval:   null,
-        countdownRemaining:  0,
-        currentPage:         1,
-        memoEditId:          null
+        stream: null,
+        capturedCanvas: null,
+        analyzer: typeof LFAAnalyzer === 'function' ? new LFAAnalyzer() : null,
+        sheetsSync: typeof GoogleSheetsSync === 'function' ? new GoogleSheetsSync() : null,
+        activeView: 'view-login',
+        lastAnalysisResult: null,
+        countdownInterval: null,
+        countdownRemaining: 0,
+        currentPage: 1,
+        memoEditId: null
     };
 
     // ── Initialize mock history on first run ──
@@ -38,37 +38,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function buildMockHistory() {
         const rows = [
-            { ts: '2026-08-26 10:15', res: '실패',  conc: '-',    memo: '' },
-            { ts: '2026-08-24 13:45', res: '양성',  conc: '0.01', memo: '첫 번째 양성 결과' },
-            { ts: '2026-08-22 17:15', res: '음성',  conc: '-',    memo: '' },
-            { ts: '2026-08-20 11:02', res: '음성',  conc: '-',    memo: '정상 확인' },
-            { ts: '2026-08-19 13:45', res: '양성',  conc: '0.02', memo: '재검 필요' },
-            { ts: '2026-08-18 17:15', res: '음성',  conc: '-',    memo: '' },
-            { ts: '2026-08-17 11:02', res: '실패',  conc: '-',    memo: '' },
-            { ts: '2026-08-15 13:45', res: '양성',  conc: '0.01', memo: '' },
-            { ts: '2026-08-14 17:15', res: '음성',  conc: '-',    memo: '' },
-            { ts: '2026-08-13 11:02', res: '음성',  conc: '-',    memo: '' },
-            { ts: '2026-08-11 11:02', res: '실패',  conc: '-',    memo: '' },
-            { ts: '2026-08-10 13:45', res: '양성',  conc: '0.01', memo: '' },
-            { ts: '2026-08-08 17:15', res: '음성',  conc: '-',    memo: '' },
-            { ts: '2026-08-06 11:02', res: '실패',  conc: '-',    memo: '' },
-            { ts: '2026-08-05 17:15', res: '음성',  conc: '-',    memo: '' },
-            { ts: '2026-08-03 09:30', res: '양성',  conc: '0.03', memo: '추가 검사 권고' },
-            { ts: '2026-08-01 14:00', res: '음성',  conc: '-',    memo: '' },
-            { ts: '2026-07-30 10:45', res: '음성',  conc: '-',    memo: '' },
+            { ts: '2026-08-26 10:15', res: '실패', conc: '-', memo: '' },
+            { ts: '2026-08-24 13:45', res: '양성', conc: '0.01', memo: '첫 번째 양성 결과' },
+            { ts: '2026-08-22 17:15', res: '음성', conc: '-', memo: '' },
+            { ts: '2026-08-20 11:02', res: '음성', conc: '-', memo: '정상 확인' },
+            { ts: '2026-08-19 13:45', res: '양성', conc: '0.02', memo: '재검 필요' },
+            { ts: '2026-08-18 17:15', res: '음성', conc: '-', memo: '' },
+            { ts: '2026-08-17 11:02', res: '실패', conc: '-', memo: '' },
+            { ts: '2026-08-15 13:45', res: '양성', conc: '0.01', memo: '' },
+            { ts: '2026-08-14 17:15', res: '음성', conc: '-', memo: '' },
+            { ts: '2026-08-13 11:02', res: '음성', conc: '-', memo: '' },
+            { ts: '2026-08-11 11:02', res: '실패', conc: '-', memo: '' },
+            { ts: '2026-08-10 13:45', res: '양성', conc: '0.01', memo: '' },
+            { ts: '2026-08-08 17:15', res: '음성', conc: '-', memo: '' },
+            { ts: '2026-08-06 11:02', res: '실패', conc: '-', memo: '' },
+            { ts: '2026-08-05 17:15', res: '음성', conc: '-', memo: '' },
+            { ts: '2026-08-03 09:30', res: '양성', conc: '0.03', memo: '추가 검사 권고' },
+            { ts: '2026-08-01 14:00', res: '음성', conc: '-', memo: '' },
+            { ts: '2026-07-30 10:45', res: '음성', conc: '-', memo: '' },
         ];
         return rows.map((r, i) => ({
-            id:               'REC_MOCK_' + (i + 1),
-            timestamp:        r.ts,
-            result:           r.res,
+            id: 'REC_MOCK_' + (i + 1),
+            timestamp: r.ts,
+            result: r.res,
             concentrationStr: r.conc,
-            userNickname:     'yelloi',
-            memo:             r.memo,
+            userNickname: 'yelloi',
+            memo: r.memo,
             cropImageDataUrl: null,
-            cropFilename:     null,
-            profileData:      null,
-            metrics:          null,
-            confidence:       null
+            cropFilename: null,
+            profileData: null,
+            metrics: null,
+            confidence: null
         }));
     }
 
@@ -77,71 +77,71 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─────────────────────────────────────────────────────────────
     const el = {
         views: {
-            login:       document.getElementById('view-login'),
+            login: document.getElementById('view-login'),
             timesetting: document.getElementById('view-timesetting'),
-            camera:      document.getElementById('view-camera'),
-            confirm:     document.getElementById('view-confirm'),
-            results:     document.getElementById('view-results')
+            camera: document.getElementById('view-camera'),
+            confirm: document.getElementById('view-confirm'),
+            results: document.getElementById('view-results')
         },
         // Login
-        inputUsername:    document.getElementById('input-username'),
-        inputPassword:    document.getElementById('input-password'),
-        btnLogin:         document.getElementById('btn-login'),
+        inputUsername: document.getElementById('input-username'),
+        inputPassword: document.getElementById('input-password'),
+        btnLogin: document.getElementById('btn-login'),
         // Time Setting
-        timesetGreeting:  document.getElementById('timeset-greeting'),
-        inputWaitMin:     document.getElementById('input-wait-min'),
-        inputWaitSec:     document.getElementById('input-wait-sec'),
-        btnTimesetOk:     document.getElementById('btn-timeset-confirm'),
-        displayMin:       document.getElementById('display-min'),
-        displaySec:       document.getElementById('display-sec'),
-        btnGoCamera:      document.getElementById('btn-go-camera'),
+        timesetGreeting: document.getElementById('timeset-greeting'),
+        inputWaitMin: document.getElementById('input-wait-min'),
+        inputWaitSec: document.getElementById('input-wait-sec'),
+        btnTimesetOk: document.getElementById('btn-timeset-confirm'),
+        displayMin: document.getElementById('display-min'),
+        displaySec: document.getElementById('display-sec'),
+        btnGoCamera: document.getElementById('btn-go-camera'),
         // Camera
-        cameraVideo:      document.getElementById('camera-video'),
-        btnCapture:       document.getElementById('btn-capture-photo'),
+        cameraVideo: document.getElementById('camera-video'),
+        btnCapture: document.getElementById('btn-capture-photo'),
         // Confirm
-        confirmCanvas:    document.getElementById('confirm-preview-canvas'),
-        btnConfirmNo:     document.getElementById('btn-confirm-no'),
-        btnConfirmYes:    document.getElementById('btn-confirm-yes'),
+        confirmCanvas: document.getElementById('confirm-preview-canvas'),
+        btnConfirmNo: document.getElementById('btn-confirm-no'),
+        btnConfirmYes: document.getElementById('btn-confirm-yes'),
         // Results
-        resultUserId:     document.getElementById('result-user-id'),
-        resultsBody:      document.getElementById('results-table-body'),
-        btnReturnHome:    document.getElementById('btn-return-home'),
+        resultUserId: document.getElementById('result-user-id'),
+        resultsBody: document.getElementById('results-table-body'),
+        btnReturnHome: document.getElementById('btn-return-home'),
         // Overlays
         analyzingOverlay: document.getElementById('analyzing-overlay'),
-        toast:            document.getElementById('toast'),
-        statusTime:       document.getElementById('status-time'),
+        toast: document.getElementById('toast'),
+        statusTime: document.getElementById('status-time'),
         // Memo popup
-        memoPopup:        document.getElementById('memo-popup'),
-        memoTextarea:     document.getElementById('memo-textarea'),
-        btnMemoCancel:    document.getElementById('btn-memo-cancel'),
-        btnMemoConfirm:   document.getElementById('btn-memo-confirm'),
+        memoPopup: document.getElementById('memo-popup'),
+        memoTextarea: document.getElementById('memo-textarea'),
+        btnMemoCancel: document.getElementById('btn-memo-cancel'),
+        btnMemoConfirm: document.getElementById('btn-memo-confirm'),
         // Graph popup
-        graphPopup:       document.getElementById('graph-popup'),
-        btnGraphClose:    document.getElementById('btn-graph-close'),
-        btnGraphClose2:   document.getElementById('btn-graph-close2'),
+        graphPopup: document.getElementById('graph-popup'),
+        btnGraphClose: document.getElementById('btn-graph-close'),
+        btnGraphClose2: document.getElementById('btn-graph-close2'),
         graphStripCanvas: document.getElementById('graph-strip-canvas'),
-        graphProfile:     document.getElementById('graph-profile-canvas'),
-        metricT:          document.getElementById('metric-t-intensity'),
-        metricC:          document.getElementById('metric-c-intensity'),
-        metricConf:       document.getElementById('metric-confidence'),
-        metricSnr:        document.getElementById('metric-snr'),
+        graphProfile: document.getElementById('graph-profile-canvas'),
+        metricT: document.getElementById('metric-t-intensity'),
+        metricC: document.getElementById('metric-c-intensity'),
+        metricConf: document.getElementById('metric-confidence'),
+        metricSnr: document.getElementById('metric-snr'),
         // Settings popup & CSV
-        btnExportCsv:     document.getElementById('btn-export-csv'),
-        btnOpenSettings:  document.getElementById('btn-open-settings'),
-        settingsPopup:    document.getElementById('settings-popup'),
-        inputWebhookUrl:  document.getElementById('input-webhook-url'),
+        btnExportCsv: document.getElementById('btn-export-csv'),
+        btnOpenSettings: document.getElementById('btn-open-settings'),
+        settingsPopup: document.getElementById('settings-popup'),
+        inputWebhookUrl: document.getElementById('input-webhook-url'),
         btnSettingsClose: document.getElementById('btn-settings-close'),
-        btnSettingsCancel:document.getElementById('btn-settings-cancel'),
-        btnSettingsSave:  document.getElementById('btn-settings-save'),
+        btnSettingsCancel: document.getElementById('btn-settings-cancel'),
+        btnSettingsSave: document.getElementById('btn-settings-save'),
         // Timesetting extras
-        btnLogout:        document.getElementById('btn-logout'),
-        btnViewResults:   document.getElementById('btn-view-results'),
+        btnLogout: document.getElementById('btn-logout'),
+        btnViewResults: document.getElementById('btn-view-results'),
         // Exit confirm popup
         exitConfirmPopup: document.getElementById('exit-confirm-popup'),
-        btnExitYes:       document.getElementById('btn-exit-yes'),
-        btnExitNo:        document.getElementById('btn-exit-no'),
+        btnExitYes: document.getElementById('btn-exit-yes'),
+        btnExitNo: document.getElementById('btn-exit-no'),
         // Top Back buttons
-        btnBackFromCamera:  document.getElementById('btn-back-from-camera'),
+        btnBackFromCamera: document.getElementById('btn-back-from-camera'),
         btnBackFromConfirm: document.getElementById('btn-back-from-confirm')
     };
 
@@ -202,11 +202,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const m = state.guideMetrics;
                 if (!m) return;
                 const cFrame = document.getElementById('confirm-kit-frame');
-                const cWin   = document.getElementById('confirm-guide-window');
-                const cWell  = document.getElementById('confirm-guide-well');
-                applyStyle(cFrame, { width: m.fW+'px', height: m.fH+'px', top: m.fTop+'px', left: m.fLeft+'px', transform: 'none' });
-                applyStyle(cWin,   { width: m.sW+'px', height: m.sH+'px', left: m.sLeft+'px', top: m.sTop+'px', transform: 'none' });
-                applyStyle(cWell,  { width: m.wDiam+'px', height: m.wDiam+'px', left: m.wLeft+'px', top: m.wTop+'px', transform: 'none' });
+                const cWin = document.getElementById('confirm-guide-window');
+                const cWell = document.getElementById('confirm-guide-well');
+                applyStyle(cFrame, { width: m.fW + 'px', height: m.fH + 'px', top: m.fTop + 'px', left: m.fLeft + 'px', transform: 'none' });
+                applyStyle(cWin, { width: m.sW + 'px', height: m.sH + 'px', left: m.sLeft + 'px', top: m.sTop + 'px', transform: 'none' });
+                applyStyle(cWell, { width: m.wDiam + 'px', height: m.wDiam + 'px', left: m.wLeft + 'px', top: m.wTop + 'px', transform: 'none' });
             }, 50);
         }
     }
@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (username === VALID_CREDENTIALS.username &&
             password === VALID_CREDENTIALS.password) {
-            state.currentUser.username  = username;
+            state.currentUser.username = username;
             state.currentUser.isLoggedIn = true;
             localStorage.setItem('yls_user_logged_in', 'true');
             localStorage.setItem('yls_user_name', username);
@@ -289,16 +289,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderCountdown() {
         const rem = Math.max(0, state.countdownRemaining);
-        const m   = Math.floor(rem / 60);
-        const s   = rem % 60;
+        const m = Math.floor(rem / 60);
+        const s = rem % 60;
         if (el.displayMin) el.displayMin.textContent = String(m).padStart(2, '0');
         if (el.displaySec) el.displaySec.textContent = String(s).padStart(2, '0');
     }
 
     if (el.btnTimesetOk) {
         el.btnTimesetOk.addEventListener('click', () => {
-            const min   = parseInt(el.inputWaitMin?.value) || 0;
-            const sec   = parseInt(el.inputWaitSec?.value) || 0;
+            const min = parseInt(el.inputWaitMin?.value) || 0;
+            const sec = parseInt(el.inputWaitSec?.value) || 0;
             const total = min * 60 + sec;
             if (total <= 0) { showToast('대기 시간을 입력하세요.'); return; }
             startCountdown(total);
@@ -385,8 +385,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // 만약 라벨 권한이 없어 deviceId를 못 찾았을 때 최초 권한 획득 시도
             let videoConstraints = {
                 facingMode: { ideal: 'environment' },
-                width:  { ideal: 1920, min: 1280 },
-                height: { ideal: 1080, min: 720  }
+                width: { ideal: 1920, min: 1280 },
+                height: { ideal: 1080, min: 720 }
             };
 
             if (targetDeviceId) {
@@ -401,8 +401,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 특정 deviceId 실패 시 기본 후면 카메라로 fallback
                 videoConstraints = {
                     facingMode: { ideal: 'environment' },
-                    width:  { ideal: 1920, min: 1280 },
-                    height: { ideal: 1080, min: 720  }
+                    width: { ideal: 1920, min: 1280 },
+                    height: { ideal: 1080, min: 720 }
                 };
                 stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
             }
@@ -418,7 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                         stream.getTracks().forEach(t => t.stop());
                         stream = newStream;
-                    } catch (_) {}
+                    } catch (_) { }
                 }
             }
 
@@ -441,7 +441,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         adv[0].zoom = targetZoom;
                     }
                     await track.applyConstraints({ advanced: adv });
-                } catch (_) {}
+                } catch (_) { }
             }
         } catch (err) {
             console.warn('Camera access error:', err);
@@ -469,36 +469,36 @@ document.addEventListener('DOMContentLoaded', () => {
         const W = container.offsetWidth;
         const H = container.offsetHeight;
 
-        const fW   = Math.round(W / 3);
-        const fH   = Math.round(fW * 3.5);
+        const fW = Math.round(W / 3);
+        const fH = Math.round(fW * 3.5);
         const fTop = Math.round(fW / 2);
         const fLeft = Math.round((W - fW) / 2);
 
-        const sW    = Math.round(fW / 3);
-        const sH    = Math.round(fW * 2 / 3);
+        const sW = Math.round(fW / 3);
+        const sH = Math.round(fW * 2 / 3);
         const sLeft = Math.round((fW - sW) / 2);
-        const sTop  = Math.round(fW * 4 / 3);
+        const sTop = Math.round(fW * 4 / 3);
 
-        const wDiam  = sW;
-        const wTop   = Math.round(fH - fW / 2 - wDiam / 2);
-        const wLeft  = Math.round((fW - wDiam) / 2);
+        const wDiam = sW;
+        const wTop = Math.round(fH - fW / 2 - wDiam / 2);
+        const wLeft = Math.round((fW - wDiam) / 2);
 
-        const frame  = document.getElementById('guide-kit-frame');
-        const strip  = document.querySelector('.guide-window-cutout');
-        const well   = document.querySelector('.guide-sample-well');
+        const frame = document.getElementById('guide-kit-frame');
+        const strip = document.querySelector('.guide-window-cutout');
+        const well = document.querySelector('.guide-sample-well');
 
-        applyStyle(frame, { width: fW+'px', height: fH+'px', top: fTop+'px', left: fLeft+'px', transform: 'none' });
-        applyStyle(strip, { width: sW+'px', height: sH+'px', left: sLeft+'px', top: sTop+'px',  transform: 'none' });
-        applyStyle(well,  { width: wDiam+'px', height: wDiam+'px', left: wLeft+'px', top: wTop+'px', transform: 'none' });
+        applyStyle(frame, { width: fW + 'px', height: fH + 'px', top: fTop + 'px', left: fLeft + 'px', transform: 'none' });
+        applyStyle(strip, { width: sW + 'px', height: sH + 'px', left: sLeft + 'px', top: sTop + 'px', transform: 'none' });
+        applyStyle(well, { width: wDiam + 'px', height: wDiam + 'px', left: wLeft + 'px', top: wTop + 'px', transform: 'none' });
 
         // ── Confirm 화면에 카메라와 완전히 동일한 가이드 위치 적용 ──
         // confirm-photo-area는 풀스크린이므로 W 그대로 사용
         const cFrame = document.getElementById('confirm-kit-frame');
-        const cWin   = document.getElementById('confirm-guide-window');
-        const cWell  = document.getElementById('confirm-guide-well');
-        applyStyle(cFrame, { width: fW+'px', height: fH+'px', top: fTop+'px', left: fLeft+'px', transform: 'none' });
-        applyStyle(cWin,   { width: sW+'px', height: sH+'px', left: sLeft+'px', top: sTop+'px', transform: 'none' });
-        applyStyle(cWell,  { width: wDiam+'px', height: wDiam+'px', left: wLeft+'px', top: wTop+'px', transform: 'none' });
+        const cWin = document.getElementById('confirm-guide-window');
+        const cWell = document.getElementById('confirm-guide-well');
+        applyStyle(cFrame, { width: fW + 'px', height: fH + 'px', top: fTop + 'px', left: fLeft + 'px', transform: 'none' });
+        applyStyle(cWin, { width: sW + 'px', height: sH + 'px', left: sLeft + 'px', top: sTop + 'px', transform: 'none' });
+        applyStyle(cWell, { width: wDiam + 'px', height: wDiam + 'px', left: wLeft + 'px', top: wTop + 'px', transform: 'none' });
 
         // 가이드 수치를 state에 저장 (캡처 시 confirm 화면 진입 후 재적용용)
         state.guideMetrics = { fW, fH, fTop, fLeft, sW, sH, sLeft, sTop, wDiam, wTop, wLeft };
@@ -518,7 +518,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const vw = el.cameraVideo.videoWidth;
                 const vh = el.cameraVideo.videoHeight;
                 canvas = document.createElement('canvas');
-                canvas.width  = vw;
+                canvas.width = vw;
                 canvas.height = vh;
                 canvas.getContext('2d').drawImage(el.cameraVideo, 0, 0, vw, vh);
             } else if (typeof LFATestSamples !== 'undefined' && LFATestSamples.createSyntheticKit) {
@@ -531,7 +531,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.capturedCanvas = canvas;
 
             if (el.confirmCanvas) {
-                el.confirmCanvas.width  = canvas.width;
+                el.confirmCanvas.width = canvas.width;
                 el.confirmCanvas.height = canvas.height;
                 el.confirmCanvas.getContext('2d').drawImage(canvas, 0, 0);
             }
@@ -651,7 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             savedRecord?.cropFilename || '')
                             .catch(e => console.warn('Sheets sync:', e));
                     }
-                } catch (_) {}
+                } catch (_) { }
 
                 navigateTo('results');
             } catch (err) {
@@ -673,19 +673,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function saveResultRecord(analysis, croppedCanvas = null) {
         if (!analysis || !analysis.diagnosis) return null;
         const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
-        const diag    = analysis.diagnosis;
+        const diag = analysis.diagnosis;
 
-        const now   = new Date();
-        const pad   = n => String(n).padStart(2, '0');
-        const ts    = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-        const fname = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.jpg`;
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+        const fname = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.jpg`;
 
         // Crop image as base64 JPEG (stored locally) - 빨간 사각 크롭 캔버스 우선 저장
         let cropDataUrl = null;
         try {
             const sc = croppedCanvas || analysis.visualData?.stripCanvas || analysis.visualData?.previewCanvas;
             if (sc) cropDataUrl = sc.toDataURL('image/jpeg', 0.85);
-        } catch (_) {}
+        } catch (_) { }
 
         // Absorbance profile for graph drawing
         let profileData = null;
@@ -693,29 +693,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const vd = analysis.visualData;
             if (vd?.correctedProfile) {
                 profileData = {
-                    corrected:      Array.from(vd.correctedProfile),
-                    cLineIndex:     vd.cLineIndex,
-                    tLineIndex:     vd.tLineIndex,
-                    cLineDetected:  vd.cLineDetected,
-                    tLineDetected:  vd.tLineDetected,
-                    cLineRange:     vd.cLineRange,
-                    tLineRange:     vd.tLineRange
+                    corrected: Array.from(vd.correctedProfile),
+                    cLineIndex: vd.cLineIndex,
+                    tLineIndex: vd.tLineIndex,
+                    cLineDetected: vd.cLineDetected,
+                    tLineDetected: vd.tLineDetected,
+                    cLineRange: vd.cLineRange,
+                    tLineRange: vd.tLineRange
                 };
             }
-        } catch (_) {}
+        } catch (_) { }
 
         const record = {
-            id:               'REC_' + Date.now(),
-            timestamp:        ts,
-            result:           diag.result || '실패',
+            id: 'REC_' + Date.now(),
+            timestamp: ts,
+            result: diag.result || '실패',
             concentrationStr: diag.result === '양성' ? (diag.concentrationStr || '0.01') : '-',
-            userNickname:     state.currentUser.username,
-            memo:             '',
+            userNickname: state.currentUser.username,
+            memo: '',
             cropImageDataUrl: cropDataUrl,
-            cropFilename:     fname,
+            cropFilename: fname,
             profileData,
-            metrics:          analysis.metrics   || null,
-            confidence:       diag.confidence    || null
+            metrics: analysis.metrics || null,
+            confidence: diag.confidence || null
         };
 
         history.unshift(record);
@@ -731,7 +731,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (el.resultUserId) el.resultUserId.textContent = state.currentUser.username;
 
-        const history    = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
+        const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
         const totalPages = Math.max(1, Math.ceil(history.length / PAGE_SIZE));
         if (state.currentPage > totalPages) state.currentPage = totalPages;
 
@@ -749,7 +749,7 @@ document.addEventListener('DOMContentLoaded', () => {
         items.forEach(rec => {
             const tr = document.createElement('tr');
 
-            let cls  = 'col-negative', label = '음성', val = '-';
+            let cls = 'col-negative', label = '음성', val = '-';
             if (rec.result === '양성' || rec.result === 'positive') {
                 cls = 'col-positive'; label = '양성';
                 val = (rec.concentrationStr && rec.concentrationStr !== '-') ? rec.concentrationStr : '0.01';
@@ -757,7 +757,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 cls = 'col-fail'; label = '실패';
             }
 
-            const hasMemo   = !!(rec.memo && rec.memo.trim());
+            const hasMemo = !!(rec.memo && rec.memo.trim());
             const memoLabel = hasMemo ? '보기' : '';
 
             tr.innerHTML = `
@@ -794,10 +794,10 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = '';
         if (totalPages <= 1) return;
 
-        const maxBtn  = 5;
-        const half    = Math.floor(maxBtn / 2);
-        let   pStart  = Math.max(1, state.currentPage - half);
-        let   pEnd    = Math.min(totalPages, pStart + maxBtn - 1);
+        const maxBtn = 5;
+        const half = Math.floor(maxBtn / 2);
+        let pStart = Math.max(1, state.currentPage - half);
+        let pEnd = Math.min(totalPages, pStart + maxBtn - 1);
         if (pEnd - pStart < maxBtn - 1) pStart = Math.max(1, pEnd - maxBtn + 1);
 
         for (let p = pStart; p <= pEnd; p++) {
@@ -846,7 +846,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el.settingsPopup) el.settingsPopup.classList.add('hidden');
     }
 
-    if (el.btnSettingsClose)  el.btnSettingsClose.addEventListener('click', closeSettingsPopup);
+    if (el.btnSettingsClose) el.btnSettingsClose.addEventListener('click', closeSettingsPopup);
     if (el.btnSettingsCancel) el.btnSettingsCancel.addEventListener('click', closeSettingsPopup);
     if (el.btnSettingsSave) {
         el.btnSettingsSave.addEventListener('click', () => {
@@ -869,22 +869,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─────────────────────────────────────────────────────────────
     function openMemoPopup(recordId) {
         const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
-        const rec     = history.find(r => r.id === recordId);
+        const rec = history.find(r => r.id === recordId);
         if (!rec) return;
         state.memoEditId = recordId;
         if (el.memoTextarea) el.memoTextarea.value = rec.memo || '';
-        if (el.memoPopup)    el.memoPopup.classList.remove('hidden');
+        if (el.memoPopup) el.memoPopup.classList.remove('hidden');
     }
 
     function closeMemoPopup() {
         state.memoEditId = null;
-        if (el.memoPopup)    el.memoPopup.classList.add('hidden');
+        if (el.memoPopup) el.memoPopup.classList.add('hidden');
     }
 
     function saveMemo() {
         if (!state.memoEditId) return;
         const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
-        const idx     = history.findIndex(r => r.id === state.memoEditId);
+        const idx = history.findIndex(r => r.id === state.memoEditId);
         if (idx >= 0) {
             history[idx].memo = (el.memoTextarea?.value || '').trim();
             localStorage.setItem('yls_lfa_history', JSON.stringify(history));
@@ -893,7 +893,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderResultsTable();
     }
 
-    if (el.btnMemoCancel)  el.btnMemoCancel.addEventListener('click',  closeMemoPopup);
+    if (el.btnMemoCancel) el.btnMemoCancel.addEventListener('click', closeMemoPopup);
     if (el.btnMemoConfirm) el.btnMemoConfirm.addEventListener('click', saveMemo);
     if (el.memoPopup) {
         el.memoPopup.addEventListener('click', e => {
@@ -913,13 +913,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (record.cropImageDataUrl) {
                 const img = new Image();
                 img.onload = () => {
-                    sc.width  = img.width;
+                    sc.width = img.width;
                     sc.height = img.height;
                     sc.getContext('2d').drawImage(img, 0, 0);
                 };
                 img.src = record.cropImageDataUrl;
             } else {
-                sc.width  = 72;
+                sc.width = 72;
                 sc.height = 190;
                 const ctx = sc.getContext('2d');
                 ctx.fillStyle = '#e2e8f0';
@@ -928,7 +928,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.font = '10px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText('이미지', 36, 90);
-                ctx.fillText('없음',   36, 104);
+                ctx.fillText('없음', 36, 104);
             }
         }
 
@@ -936,20 +936,20 @@ document.addEventListener('DOMContentLoaded', () => {
         drawAbsorbanceGraph(record);
 
         // ── Metrics ──
-        const m    = record.metrics || {};
+        const m = record.metrics || {};
         const conf = record.confidence;
 
-        setText(el.metricT,    m.tPeakHeight   != null ? m.tPeakHeight.toFixed(3)   : '-');
-        setText(el.metricC,    m.cPeakHeight   != null ? m.cPeakHeight.toFixed(3)   : '-');
-        setText(el.metricConf, conf            != null ? conf.toFixed(1) + '%'       : '-');
-        setText(el.metricSnr,  m.signalToNoise != null ? m.signalToNoise.toFixed(1) + ' dB' : '-');
+        setText(el.metricT, m.tPeakHeight != null ? m.tPeakHeight.toFixed(3) : '-');
+        setText(el.metricC, m.cPeakHeight != null ? m.cPeakHeight.toFixed(3) : '-');
+        setText(el.metricConf, conf != null ? conf.toFixed(1) + '%' : '-');
+        setText(el.metricSnr, m.signalToNoise != null ? m.signalToNoise.toFixed(1) + ' dB' : '-');
     }
 
     function closeGraphPopup() {
         if (el.graphPopup) el.graphPopup.classList.add('hidden');
     }
 
-    if (el.btnGraphClose)  el.btnGraphClose.addEventListener('click',  closeGraphPopup);
+    if (el.btnGraphClose) el.btnGraphClose.addEventListener('click', closeGraphPopup);
     if (el.btnGraphClose2) el.btnGraphClose2.addEventListener('click', closeGraphPopup);
     if (el.graphPopup) {
         el.graphPopup.addEventListener('click', e => {
@@ -965,7 +965,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!canvas) return;
 
         const W = 220, H = 170;
-        canvas.width  = W;
+        canvas.width = W;
         canvas.height = H;
         const ctx = canvas.getContext('2d');
 
@@ -985,14 +985,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const pW = W - pL - pR;
         const pH = H - pT - pB;
         const profile = pd.corrected;
-        const N       = profile.length;
+        const N = profile.length;
 
         let maxVal = 0.0001;
         for (const v of profile) if (v > maxVal) maxVal = v;
 
         // Grid lines
         ctx.strokeStyle = '#e2e8f0';
-        ctx.lineWidth   = 0.5;
+        ctx.lineWidth = 0.5;
         for (let g = 0; g <= 4; g++) {
             const y = pT + pH - (g / 4) * pH;
             ctx.beginPath(); ctx.moveTo(pL, y); ctx.lineTo(pL + pW, y); ctx.stroke();
@@ -1002,18 +1002,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pd.tLineRange) {
             const [l, r] = pd.tLineRange;
             ctx.fillStyle = 'rgba(239,68,68,0.10)';
-            ctx.fillRect(pL + (l/N)*pW, pT, Math.max(2, ((r-l)/N)*pW), pH);
+            ctx.fillRect(pL + (l / N) * pW, pT, Math.max(2, ((r - l) / N) * pW), pH);
         }
         if (pd.cLineRange) {
             const [l, r] = pd.cLineRange;
             ctx.fillStyle = 'rgba(16,185,129,0.10)';
-            ctx.fillRect(pL + (l/N)*pW, pT, Math.max(2, ((r-l)/N)*pW), pH);
+            ctx.fillRect(pL + (l / N) * pW, pT, Math.max(2, ((r - l) / N) * pW), pH);
         }
 
         // Profile line (green channel curve)
         ctx.beginPath();
         ctx.strokeStyle = '#10b981';
-        ctx.lineWidth   = 1.8;
+        ctx.lineWidth = 1.8;
         for (let i = 0; i < N; i++) {
             const x = pL + (i / (N - 1)) * pW;
             const y = pT + pH - (profile[i] / maxVal) * pH;
@@ -1025,7 +1025,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pd.tLineDetected && pd.tLineIndex != null) {
             const x = pL + (pd.tLineIndex / (N - 1)) * pW;
             ctx.strokeStyle = '#ef4444';
-            ctx.lineWidth   = 1.2;
+            ctx.lineWidth = 1.2;
             ctx.setLineDash([3, 2]);
             ctx.beginPath(); ctx.moveTo(x, pT); ctx.lineTo(x, pT + pH); ctx.stroke();
             ctx.setLineDash([]);
@@ -1039,7 +1039,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pd.cLineDetected && pd.cLineIndex != null) {
             const x = pL + (pd.cLineIndex / (N - 1)) * pW;
             ctx.strokeStyle = '#10b981';
-            ctx.lineWidth   = 1.2;
+            ctx.lineWidth = 1.2;
             ctx.setLineDash([3, 2]);
             ctx.beginPath(); ctx.moveTo(x, pT); ctx.lineTo(x, pT + pH); ctx.stroke();
             ctx.setLineDash([]);
@@ -1051,7 +1051,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Axes
         ctx.strokeStyle = '#94a3b8';
-        ctx.lineWidth   = 1;
+        ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(pL, pT);
         ctx.lineTo(pL, pT + pH);
@@ -1163,11 +1163,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // PWA / WebApp 종료 처리
             try {
                 window.close();
-            } catch (_) {}
+            } catch (_) { }
             // window.close()가 실패하는 경우 빈 페이지로 이동
             try {
                 window.location.replace('about:blank');
-            } catch (_) {}
+            } catch (_) { }
         });
     }
 
