@@ -193,8 +193,21 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (viewName === 'results') {
             state.currentPage = 1;
             renderResultsTable();
+        } else if (viewName === 'confirm') {
+            // confirm 화면에 카메라 가이드와 동일한 위치 재적용
+            setTimeout(() => {
+                const m = state.guideMetrics;
+                if (!m) return;
+                const cFrame = document.getElementById('confirm-kit-frame');
+                const cWin   = document.getElementById('confirm-guide-window');
+                const cWell  = document.getElementById('confirm-guide-well');
+                applyStyle(cFrame, { width: m.fW+'px', height: m.fH+'px', top: m.fTop+'px', left: m.fLeft+'px', transform: 'none' });
+                applyStyle(cWin,   { width: m.sW+'px', height: m.sH+'px', left: m.sLeft+'px', top: m.sTop+'px', transform: 'none' });
+                applyStyle(cWell,  { width: m.wDiam+'px', height: m.wDiam+'px', left: m.wLeft+'px', top: m.wTop+'px', transform: 'none' });
+            }, 50);
         }
     }
+
 
     // ─────────────────────────────────────────────────────────────
     // LOGIN
@@ -451,6 +464,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.querySelector('.camera-container');
         if (!container) return;
         const W = container.offsetWidth;
+        const H = container.offsetHeight;
 
         const fW   = Math.round(W / 3);
         const fH   = Math.round(fW * 3.5);
@@ -474,14 +488,19 @@ document.addEventListener('DOMContentLoaded', () => {
         applyStyle(strip, { width: sW+'px', height: sH+'px', left: sLeft+'px', top: sTop+'px',  transform: 'none' });
         applyStyle(well,  { width: wDiam+'px', height: wDiam+'px', left: wLeft+'px', top: wTop+'px', transform: 'none' });
 
-        // Mirror to confirm screen
+        // ── Confirm 화면에 카메라와 완전히 동일한 가이드 위치 적용 ──
+        // confirm-photo-area는 풀스크린이므로 W 그대로 사용
         const cFrame = document.getElementById('confirm-kit-frame');
         const cWin   = document.getElementById('confirm-guide-window');
         const cWell  = document.getElementById('confirm-guide-well');
-        applyStyle(cFrame, { width: fW+'px', height: fH+'px' });
+        applyStyle(cFrame, { width: fW+'px', height: fH+'px', top: fTop+'px', left: fLeft+'px', transform: 'none' });
         applyStyle(cWin,   { width: sW+'px', height: sH+'px', left: sLeft+'px', top: sTop+'px', transform: 'none' });
         applyStyle(cWell,  { width: wDiam+'px', height: wDiam+'px', left: wLeft+'px', top: wTop+'px', transform: 'none' });
+
+        // 가이드 수치를 state에 저장 (캡처 시 confirm 화면 진입 후 재적용용)
+        state.guideMetrics = { fW, fH, fTop, fLeft, sW, sH, sLeft, sTop, wDiam, wTop, wLeft };
     }
+
 
     function applyStyle(el, styles) {
         if (!el) return;
