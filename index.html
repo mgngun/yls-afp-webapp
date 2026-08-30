@@ -8,7 +8,7 @@
     <title>YLS - AFP Testing for Cancer | LFA 스마트폰 AI 진단</title>
     <meta name="description" content="YLS AFP Testing for Cancer - LFA 스마트폰 카메라 AI 진단 웹앱">
     <!-- <link rel="stylesheet" href="css/style.css?v=4.0.0"> -->
-    <link rel="stylesheet" href="css/style.css?v=4.0.4">
+    <link rel="stylesheet" href="css/style.css?v=4.0.5">
 </head>
 
 <body>
@@ -89,6 +89,13 @@
          ========================================== -->
         <main id="view-camera" class="view">
             <div class="camera-container">
+                <!-- Top Left Back Button (이전 페이지로 이동) -->
+                <button id="btn-back-from-camera" class="btn-top-back" aria-label="이전 화면으로">
+                    <svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8.75 1.03125L1.25 8.0625L8.75 15.0938" stroke="#F8F8F8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+
                 <!-- Camera Video -->
                 <video id="camera-video" autoplay muted playsinline></video>
 
@@ -118,6 +125,13 @@
          ========================================== -->
         <main id="view-confirm" class="view">
             <div class="confirm-fullscreen-container">
+                <!-- Top Left Back Button (이전 페이지로 이동) -->
+                <button id="btn-back-from-confirm" class="btn-top-back" aria-label="이전 화면으로">
+                    <svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8.75 1.03125L1.25 8.0625L8.75 15.0938" stroke="#F8F8F8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+
                 <!-- Photo preview -->
                 <div class="confirm-photo-area">
                     <canvas id="confirm-preview-canvas"></canvas>
