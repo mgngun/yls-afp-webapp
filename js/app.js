@@ -139,7 +139,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Exit confirm popup
         exitConfirmPopup: document.getElementById('exit-confirm-popup'),
         btnExitYes:       document.getElementById('btn-exit-yes'),
-        btnExitNo:        document.getElementById('btn-exit-no')
+        btnExitNo:        document.getElementById('btn-exit-no'),
+        // Top Back buttons
+        btnBackFromCamera:  document.getElementById('btn-back-from-camera'),
+        btnBackFromConfirm: document.getElementById('btn-back-from-confirm')
     };
 
     // ─────────────────────────────────────────────────────────────
@@ -591,6 +594,21 @@ document.addEventListener('DOMContentLoaded', () => {
         cCtx.drawImage(srcCanvas, realX, realY, realW, realH, 0, 0, realW, realH);
 
         return cropCanvas;
+    }
+
+    // ── Top-Left Back Buttons (이전 화면 이동) ──
+    if (el.btnBackFromCamera) {
+        el.btnBackFromCamera.addEventListener('click', () => {
+            stopCamera();
+            navigateTo('timesetting');
+        });
+    }
+
+    if (el.btnBackFromConfirm) {
+        el.btnBackFromConfirm.addEventListener('click', () => {
+            state.capturedCanvas = null;
+            navigateTo('camera');
+        });
     }
 
     // ─────────────────────────────────────────────────────────────
