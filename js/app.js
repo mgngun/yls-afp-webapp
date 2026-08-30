@@ -16,8 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const state = {
         currentUser: {
-            username: localStorage.getItem('yls_user_name') || 'yelloi',
-            isLoggedIn: localStorage.getItem('yls_user_logged_in') === 'true'
+            username: 'yelloi',
+            isLoggedIn: false
         },
         stream:              null,
         capturedCanvas:      null,
@@ -328,7 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const sTop  = Math.round(fW * 4 / 3);
 
         const wDiam  = sW;
-        const wTop   = Math.round(fH + fW / 2 - wDiam / 2);
+        const wTop   = Math.round(fH - fW / 2 - wDiam / 2);
         const wLeft  = Math.round((fW - wDiam) / 2);
 
         const frame  = document.getElementById('guide-kit-frame');
@@ -857,9 +857,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─────────────────────────────────────────────────────────────
     // App Startup
     // ─────────────────────────────────────────────────────────────
-    if (state.currentUser.isLoggedIn) {
-        navigateTo('timesetting');
-    } else {
-        navigateTo('login');
-    }
+    if (el.inputPassword) el.inputPassword.value = '';
+    navigateTo('login');
 });
