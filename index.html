@@ -8,7 +8,7 @@
     <title>YLS - AFP Testing for Cancer | LFA 스마트폰 AI 진단</title>
     <meta name="description" content="YLS AFP Testing for Cancer - LFA 스마트폰 카메라 AI 진단 웹앱">
     <!-- <link rel="stylesheet" href="css/style.css?v=4.0.0"> -->
-    <link rel="stylesheet" href="css/style.css?v=4.0.1">
+    <link rel="stylesheet" href="css/style.css?v=4.0.2">
 </head>
 
 <body>
@@ -44,6 +44,9 @@
          VIEW 2: Time Setting Screen (시간설정 화면)
          ========================================== -->
         <main id="view-timesetting" class="view">
+            <!-- Logout 버튼 (우측 상단) -->
+            <button id="btn-logout" class="btn-logout">Logout</button>
+
             <div class="timeset-body">
                 <p id="timeset-greeting" class="timeset-greeting">'yelloi' 님 환영합니다.</p>
                 <p class="timeset-desc">반응 대기 시간을 설정하고<br>확인 버튼을 눌러주세요.</p>
@@ -73,6 +76,9 @@
             </div>
 
             <div class="timeset-bottom">
+                <div class="timeset-bottom-top-row">
+                    <button id="btn-view-results" class="btn-view-results">지난 결과 보기</button>
+                </div>
                 <button id="btn-go-camera" class="btn-go-camera">바로 촬영하기</button>
                 <footer class="app-footer">Yellosis Inc. &#169;</footer>
             </div>
@@ -272,6 +278,19 @@
         </div>
 
     </div><!-- /.app-container -->
+
+        <!-- ==========================================
+         앱 종료 확인 팝업 (Android 뒤로가기)
+         ========================================== -->
+        <div id="exit-confirm-popup" class="popup-overlay hidden">
+            <div class="popup-card exit-popup-card">
+                <p class="exit-popup-msg">앱을 종료하시겠습니까?</p>
+                <div class="popup-btn-row">
+                    <button id="btn-exit-no" class="btn-popup-cancel">아니오</button>
+                    <button id="btn-exit-yes" class="btn-popup-confirm">예</button>
+                </div>
+            </div>
+        </div>
 
     <!-- Scripts -->
     <script src="js/test_samples.js"></script>
