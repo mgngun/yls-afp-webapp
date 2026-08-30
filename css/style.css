@@ -1343,3 +1343,39 @@ body {
     margin-bottom: 28px;
     line-height: 1.5;
 }
+
+/* ==========================================================================
+   Top-Left Back Button (Camera & Confirm Screens)
+   ========================================================================== */
+
+.btn-top-back {
+    position: absolute;
+    top: 32px;
+    left: 16px;
+    z-index: 30;
+    background: transparent;
+    border: none;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+.btn-top-back svg {
+    display: block;
+    width: 14px;
+    height: 22px;
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
+}
+
+.btn-top-back:hover {
+    opacity: 0.8;
+}
+
+.btn-top-back:active {
+    transform: scale(0.92);
+    opacity: 0.6;
+}
