@@ -1258,3 +1258,81 @@ body {
 
 .graph-metric-value.c-value {
     color: #059669;
+}
+
+/* ==========================================================================
+   Timesetting — Logout & 지난 결과 보기 버튼
+   ========================================================================== */
+
+/* Logout 버튼: 우측 상단 텍스트 버튼 */
+.btn-logout {
+    position: absolute;
+    top: 18px;
+    right: 20px;
+    background: none;
+    border: none;
+    font-size: 15px;
+    font-family: var(--font-gilroy), var(--font-family);
+    font-weight: 500;
+    color: #7F7F7F;
+    cursor: pointer;
+    padding: 4px 6px;
+    letter-spacing: 0.01em;
+    -webkit-tap-highlight-color: transparent;
+    z-index: 10;
+}
+
+.btn-logout:hover,
+.btn-logout:active {
+    color: #555555;
+    text-decoration: underline;
+}
+
+/* view-timesetting에 relative 위치 보장 (btn-logout 절대위치 기준) */
+#view-timesetting {
+    position: relative;
+}
+
+/* 지난 결과 보기 줄 */
+.timeset-bottom-top-row {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 4px 8px 4px;
+}
+
+/* 지난 결과 보기 버튼: 텍스트 링크 스타일 */
+.btn-view-results {
+    background: none;
+    border: none;
+    font-size: 18px;
+    font-family: var(--font-family);
+    font-weight: 400;
+    color: #7F7F7F;
+    cursor: pointer;
+    padding: 4px 2px;
+    -webkit-tap-highlight-color: transparent;
+    letter-spacing: 0.01em;
+}
+
+.btn-view-results:hover,
+.btn-view-results:active {
+    color: #555555;
+    text-decoration: underline;
+}
+
+/* ==========================================================================
+   앱 종료 확인 팝업 (Android 뒤로가기)
+   ========================================================================== */
+
+.exit-popup-card {
+    text-align: center;
+    padding: 32px 24px 24px;
+}
+
+.exit-popup-msg {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 28px;
+    line-height: 1.5;
+}
