@@ -1274,7 +1274,7 @@ body {
 /* Logout 버튼: 우측 상단 텍스트 버튼 */
 .btn-logout {
     position: absolute;
-    top: 18px;
+    top: 35px;
     right: 20px;
     background: none;
     border: none;
