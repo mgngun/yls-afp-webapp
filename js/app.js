@@ -655,16 +655,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Auto-sync to Google Sheets (Drive 이미지 업로드 포함)
                 try {
+                    const cropUrl = savedRecord?.cropImageDataUrl || croppedStrip.toDataURL('image/jpeg', 0.85);
                     if (state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
                         state.sheetsSync.syncResult(
                             result, 
                             state.currentUser,
                             savedRecord?.memo || '',
                             savedRecord?.cropFilename || '',
-                            savedRecord?.cropImageDataUrl || null
+                            cropUrl
                         ).catch(e => console.warn('Sheets sync:', e));
                     }
-                } catch (_) { }
+                } catch (e) {
+                    console.warn('Sheets sync error:', e);
+                }
 
                 navigateTo('results');
                 if (savedRecord) {

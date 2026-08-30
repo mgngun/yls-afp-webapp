@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * YLS LFA AFP 진단 키트 - Google Apps Script (GAS) 백엔드 코드
- * 구글 시트 저장 + 구글 드라이브 이미지 자동 업로드 연동
+ * 구글 시트 저장 + 구글 드라이브 이미지 자동 업로드 연동 (v4.3.2)
  * ============================================================================
  * 
  * [설정된 구글 리소스]
@@ -9,18 +9,34 @@
  * 2. 이미지 저장 드라이브 폴더: https://drive.google.com/drive/u/0/folders/1U-3jUSs7tutgovrNeOZE7P5Y_KuBqlwI
  *    - 폴더 ID: 1U-3jUSs7tutgovrNeOZE7P5Y_KuBqlwI
  * 
- * [배포 및 업데이트 방법]
- * 1. 구글 스프레드시트 상단 [확장 프로그램] -> [Apps Script] 클릭
- * 2. 기존 코드를 모두 지우고 이 파일의 전체 내용을 붙여넣기
- * 3. 오른쪽 상단 [배포] -> [배포 관리] 클릭
- * 4. [수정(연필 아이콘)] 클릭 -> 버전: [새 버전] 선택 -> [배포] 클릭
- *    - (최초 배포인 경우: [배포] -> [새 배포] -> 유형: [웹 앱] -> 액세스 권한: [모든 사용자(Anyone)])
- * 5. 권한 확인 팝업이 뜨면 [고급] -> [안전하지 않음(으)로 이동] -> [허용] 클릭
+ * [배포 및 권한 승인 필수 3단계]
+ * 1. 스프레드시트 상단 [확장 프로그램] -> [Apps Script] 클릭 후 이 파일 전체 내용 붙여넣기
+ * 2. [중요] 상단 툴바의 실행 함수를 'testDrivePermission'으로 선택 후 [실행(▶)] 클릭
+ *    -> "권한 검토" 팝업 뜨면 -> [고급] -> [안전하지 않음(으)로 이동] -> [허용] 클릭 (드라이브 권한 승인 완료)
+ * 3. 오른쪽 상단 [배포] -> [배포 관리] -> [연필 아이콘(수정)] -> 버전: [새 버전] 선택 -> [배포] 클릭
  * ============================================================================
  */
 
 // 이미지 저장 대상 구글 드라이브 폴더 ID
 var DRIVE_FOLDER_ID = "1U-3jUSs7tutgovrNeOZE7P5Y_KuBqlwI";
+
+/**
+ * 1회 권한 승인 및 드라이브 접근 테스트 함수
+ * Apps Script 편집기에서 이 함수를 선택하고 [실행]을 누르면 구글 권한 승인 창이 뜹니다.
+ */
+function testDrivePermission() {
+  try {
+    var folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+    Logger.log("성공: 대상 폴더에 정상 접근했습니다 -> " + folder.getName());
+    var testBlob = Utilities.newBlob("test", "text/plain", "permission_check.txt");
+    var testFile = folder.createFile(testBlob);
+    Logger.log("성공: 파일 생성 완료 -> " + testFile.getUrl());
+    testFile.setTrashed(true); // 테스트 파일 삭제
+    Logger.log("Drive 권한이 완벽하게 승인되었습니다!");
+  } catch (err) {
+    Logger.log("Drive 권한 에러: " + err.toString());
+  }
+}
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
@@ -63,73 +79,80 @@ function doPost(e) {
     var tLine       = data.T_line || data.tLine || "";
     var result      = data.result || "";
     var value       = data.value !== undefined ? data.value : "";
-    var error       = data.error || "";
+    var errorMsg    = data.error || "";
     var memo        = data.Memo || data.memo || "";
-    var cropImage   = data.Crop_image || data.cropFilename || (userId + "_" + Utilities.formatDate(new Date(), "Asia/Seoul", "yyyyMMddHHmmss") + ".jpg");
+    var rawFilename = data.crop_filename || data.Crop_image || data.cropFilename || (userId + "_" + Utilities.formatDate(new Date(), "Asia/Seoul", "yyyyMMddHHmmss") + ".jpg");
     
+    if (rawFilename.indexOf(".jpg") === -1 && rawFilename.indexOf(".png") === -1) {
+      rawFilename += ".jpg";
+    }
+
     // 2. 구글 드라이브에 이미지 파일 저장
     var imageBase64 = data.crop_image_base64 || data.cropImageBase64 || data.imageBase64 || "";
-    var driveFileUrl = "";
-    var driveDirectUrl = "";
-    var driveFileId  = "";
+    var driveFileUrl   = "";
+    var driveFileId    = "";
+    var isDriveSuccess = false;
     
     if (imageBase64 && DRIVE_FOLDER_ID) {
       try {
         var folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
         
-        // Data URL 헤더 제거 (data:image/jpeg;base64, 부분)
+        // Data URL 헤더(data:image/jpeg;base64,) 제거
         var pureBase64 = imageBase64;
         if (pureBase64.indexOf("base64,") > -1) {
           pureBase64 = pureBase64.split("base64,")[1];
         }
         
         var decodedBytes = Utilities.base64Decode(pureBase64);
-        var filename = cropImage;
-        if (filename.indexOf(".jpg") === -1 && filename.indexOf(".png") === -1) {
-          filename += ".jpg";
-        }
-        
-        var blob = Utilities.newBlob(decodedBytes, "image/jpeg", filename);
+        var blob = Utilities.newBlob(decodedBytes, "image/jpeg", rawFilename);
         var file = folder.createFile(blob);
         
-        // 링크가 있는 모든 사용자가 볼 수 있도록 공개 권한 설정
+        // 누구나 링크로 볼 수 있도록 권한 설정
         try {
           file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
         } catch (_) {}
         
         driveFileId    = file.getId();
-        driveFileUrl   = "https://drive.google.com/file/d/" + driveFileId + "/view?usp=drivesdk";
-        driveDirectUrl = "https://lh3.googleusercontent.com/d/" + driveFileId;
-        
-        // 시트의 Crop_image 셀에 클릭 시 바로 이미지가 열리는 HYPERLINK 수식 적용
-        // 형식: =HYPERLINK("https://drive.google.com/file/d/...", "yelloi_20260830203105.jpg")
-        cropImage = '=HYPERLINK("' + driveFileUrl + '", "' + filename + '")';
+        driveFileUrl   = "https://drive.google.com/file/d/" + driveFileId + "/view";
+        isDriveSuccess = true;
       } catch (driveErr) {
-        Logger.log("Drive save error: " + driveErr.toString());
+        errorMsg = (errorMsg ? errorMsg + " | " : "") + "DriveErr: " + driveErr.toString();
       }
+    } else if (!imageBase64) {
+      errorMsg = (errorMsg ? errorMsg + " | " : "") + "NoImageBase64Received";
     }
     
     // 3. 스프레드시트에 행 추가
-    sheet.appendRow([
+    var newRow = [
       timestamp,
       userId,
       cLine,
       tLine,
       result,
       value,
-      error,
+      errorMsg,
       memo,
-      cropImage
-    ]);
+      rawFilename
+    ];
+    sheet.appendRow(newRow);
+    var lastRowIdx = sheet.getLastRow();
+
+    // 4. 구글 드라이브 업로드 성공 시 HYPERLINK 수식 직접 셀에 주입 (파란색 클릭 가능한 링크)
+    if (isDriveSuccess && driveFileUrl) {
+      var cropCell = sheet.getRange(lastRowIdx, 9);
+      var formula = '=HYPERLINK("' + driveFileUrl + '", "' + rawFilename + '")';
+      cropCell.setFormula(formula);
+    }
     
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
-      message: "Data and image processed successfully",
+      message: "Processed",
       timestamp: timestamp,
       driveFileUrl: driveFileUrl,
-      driveDirectUrl: driveDirectUrl,
       driveFileId: driveFileId,
-      cropImage: cropImage
+      filename: rawFilename,
+      isDriveSuccess: isDriveSuccess,
+      errorMsg: errorMsg
     })).setMimeType(ContentService.MimeType.JSON);
     
   } catch (error) {
@@ -145,7 +168,7 @@ function doPost(e) {
 function doGet(e) {
   return ContentService.createTextOutput(JSON.stringify({
     status: "online",
-    message: "YLS LFA Kit Google Apps Script API is running",
+    message: "YLS LFA Kit API v4.3.2 is running",
     driveFolderId: DRIVE_FOLDER_ID,
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);
