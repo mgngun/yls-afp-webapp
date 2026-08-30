@@ -21,21 +21,17 @@
 var DRIVE_FOLDER_ID = "1U-3jUSs7tutgovrNeOZE7P5Y_KuBqlwI";
 
 /**
- * 1회 권한 승인 및 드라이브 접근 테스트 함수
- * Apps Script 편집기에서 이 함수를 선택하고 [실행]을 누르면 구글 권한 승인 창이 뜹니다.
+ * [권한 승인 전용 함수]
+ * 이 함수는 구글 권한 승인 창을 강제로 띄우기 위한 함수입니다.
+ * 툴바에서 'authorizeDriveApp'을 선택하고 [실행]을 누르면 즉시 구글 계정 권한 승인 창이 뜹니다.
  */
-function testDrivePermission() {
-  try {
-    var folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
-    Logger.log("성공: 대상 폴더에 정상 접근했습니다 -> " + folder.getName());
-    var testBlob = Utilities.newBlob("test", "text/plain", "permission_check.txt");
-    var testFile = folder.createFile(testBlob);
-    Logger.log("성공: 파일 생성 완료 -> " + testFile.getUrl());
-    testFile.setTrashed(true); // 테스트 파일 삭제
-    Logger.log("Drive 권한이 완벽하게 승인되었습니다!");
-  } catch (err) {
-    Logger.log("Drive 권한 에러: " + err.toString());
-  }
+function authorizeDriveApp() {
+  // DriveApp 및 SpreadsheetApp을 직접 호출하여 강제로 권한 팝업을 발생시킴
+  var folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+  var file = folder.createFile("auth_test.txt", "OK");
+  file.setTrashed(true);
+  SpreadsheetApp.getActiveSpreadsheet();
+  Logger.log("🎉 구글 드라이브 및 스프레드시트 권한 승인이 성공적으로 완료되었습니다!");
 }
 
 function doPost(e) {
