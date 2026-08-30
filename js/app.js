@@ -117,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnMemoConfirm: document.getElementById('btn-memo-confirm'),
         // Graph popup
         graphPopup: document.getElementById('graph-popup'),
+        graphPopupResult: document.getElementById('graph-popup-result-badge'),
         btnGraphClose: document.getElementById('btn-graph-close'),
         btnGraphClose2: document.getElementById('btn-graph-close2'),
         graphStripCanvas: document.getElementById('graph-strip-canvas'),
@@ -663,6 +664,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (_) { }
 
                 navigateTo('results');
+                if (savedRecord) {
+                    showGraphPopup(savedRecord);
+                }
             } catch (err) {
                 console.error('Analysis error:', err);
                 showToast('분석 중 오류가 발생했습니다.');
@@ -915,6 +919,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─────────────────────────────────────────────────────────────
     function showGraphPopup(record) {
         if (el.graphPopup) el.graphPopup.classList.remove('hidden');
+
+        // ── Header Result Badge ('검사결과 : xx') ──
+        if (el.graphPopupResult) {
+            const res = record.result || '실패';
+            el.graphPopupResult.textContent = `‘검사결과 : ${res}’`;
+            el.graphPopupResult.className = 'graph-popup-result-badge';
+            if (res === '양성' || res === 'positive') {
+                el.graphPopupResult.classList.add('badge-positive');
+            } else if (res === '음성' || res === 'negative') {
+                el.graphPopupResult.classList.add('badge-negative');
+            } else {
+                el.graphPopupResult.classList.add('badge-fail');
+            }
+        }
 
         // ── Strip image ──
         const sc = el.graphStripCanvas;
