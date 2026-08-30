@@ -1,271 +1,283 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>YLS - AFP Testing for Cancer | LFA 스마트폰 AI 진단</title>
     <meta name="description" content="YLS AFP Testing for Cancer - LFA 스마트폰 카메라 AI 진단 웹앱">
-    <link rel="stylesheet" href="css/style.css?v=4.0.0">
+    <!-- <link rel="stylesheet" href="css/style.css?v=4.0.0"> -->
+    <link rel="stylesheet" href="css/style.css?v=4.0.1">
 </head>
+
 <body>
 
-<div class="app-container">
+    <div class="app-container">
 
-    <!-- ==========================================
+        <!-- ==========================================
          VIEW 1: Login Screen (로그인 화면)
          ========================================== -->
-    <main id="view-login" class="view active">
-        <h1 class="brand-title">YLS</h1>
-        <h2 class="brand-subtitle">AFP Testing for Cancer</h2>
+        <main id="view-login" class="view active">
+            <h1 class="brand-title">YLS</h1>
+            <h2 class="brand-subtitle">AFP Testing for Cancer</h2>
 
-        <!-- Kit Image - 원본 실제 사진 -->
-        <div class="kit-visual-card">
-            <img src="kit_photo.png" alt="LFA AFP 진단 키트" class="kit-photo"
-                 onerror="this.onerror=null; this.src='file:///C:/Users/mgngu/.gemini/antigravity-ide/brain/6db3fb1b-f834-4251-beb7-b4737858ad2b/.user_uploaded/media_1788009693103.png';">
-        </div>
+            <!-- Kit Image - 원본 실제 사진 -->
+            <div class="kit-visual-card">
+                <img src="kit_photo.png" alt="LFA AFP 진단 키트" class="kit-photo"
+                    onerror="this.onerror=null; this.src='file:///C:/Users/mgngu/.gemini/antigravity-ide/brain/6db3fb1b-f834-4251-beb7-b4737858ad2b/.user_uploaded/media_1788009693103.png';">
+            </div>
 
-        <!-- Login Form -->
-        <div class="login-form">
-            <input id="input-username" type="text" class="login-input" placeholder="Username" autocomplete="username">
-            <input id="input-password" type="password" class="login-input" placeholder="Password" autocomplete="current-password">
-            <button id="btn-login" class="btn-login">Login</button>
-        </div>
+            <!-- Login Form -->
+            <div class="login-form">
+                <input id="input-username" type="text" class="login-input" placeholder="Username"
+                    autocomplete="username">
+                <input id="input-password" type="password" class="login-input" placeholder="Password"
+                    autocomplete="current-password">
+                <button id="btn-login" class="btn-login">Login</button>
+            </div>
 
-        <footer class="app-footer">Yellosis Inc. &#169;</footer>
-    </main>
+            <footer class="app-footer">Yellosis Inc. &#169;</footer>
+        </main>
 
-    <!-- ==========================================
+        <!-- ==========================================
          VIEW 2: Time Setting Screen (시간설정 화면)
          ========================================== -->
-    <main id="view-timesetting" class="view">
-        <div class="timeset-body">
-            <p id="timeset-greeting" class="timeset-greeting">'yelloi' 님 환영합니다.</p>
-            <p class="timeset-desc">반응 대기 시간을 설정하고<br>확인 버튼을 눌러주세요.</p>
+        <main id="view-timesetting" class="view">
+            <div class="timeset-body">
+                <p id="timeset-greeting" class="timeset-greeting">'yelloi' 님 환영합니다.</p>
+                <p class="timeset-desc">반응 대기 시간을 설정하고<br>확인 버튼을 눌러주세요.</p>
 
-            <div class="timeset-input-section">
-                <div class="timeset-input-row">
-                    <input id="input-wait-min" type="number" class="time-digit-input" min="0" max="99" placeholder="--">
-                    <span class="time-unit">분</span>
-                    <input id="input-wait-sec" type="number" class="time-digit-input" min="0" max="59" placeholder="--">
-                    <span class="time-unit">초</span>
-                    <button id="btn-timeset-confirm" class="btn-timeset-ok">확인</button>
-                </div>
-            </div>
-
-            <div class="timeset-countdown">
-                <p class="countdown-label">남은 시간</p>
-                <div class="countdown-display">
-                    <span id="display-min" class="countdown-digit">--</span>
-                    <span class="countdown-sep">분</span>
-                    <span id="display-sec" class="countdown-digit">--</span>
-                    <span class="countdown-sep">초</span>
-                </div>
-                <p class="countdown-note">* 반응 대기 시간이 끝나면 자동으로<br>촬영 화면으로 넘어 갑니다.</p>
-            </div>
-        </div>
-
-        <div class="timeset-bottom">
-            <button id="btn-go-camera" class="btn-go-camera">바로 촬영하기</button>
-            <footer class="app-footer">Yellosis Inc. &#169;</footer>
-        </div>
-    </main>
-
-    <!-- ==========================================
-         VIEW 3: Camera Screen (촬영 화면)
-         ========================================== -->
-    <main id="view-camera" class="view">
-        <div class="camera-container">
-            <!-- Camera Video -->
-            <video id="camera-video" autoplay muted playsinline></video>
-
-            <!-- Guide Overlay Layer -->
-            <div class="guide-overlay-layer">
-                <div class="guide-kit-frame" id="guide-kit-frame">
-                    <!-- Strip window guide (red rectangle) -->
-                    <div class="guide-window-cutout"></div>
-                    <!-- Sample well guide (red circle) -->
-                    <div class="guide-sample-well"></div>
-                </div>
-            </div>
-
-            <!-- Bottom Panel -->
-            <div class="camera-bottom-panel">
-                <p class="guide-instruction-text">Kit를 카메라 영역에 맞추어 주세요</p>
-                <div class="camera-controls-row">
-                    <button id="btn-capture-photo" class="btn-capture">촬영하기</button>
-                </div>
-                <footer class="app-footer app-footer--camera">Yellosis Inc. &#169;</footer>
-            </div>
-        </div>
-    </main>
-
-    <!-- ==========================================
-         VIEW 4: Photo Confirm Screen (확인 화면)
-         ========================================== -->
-    <main id="view-confirm" class="view">
-        <div class="confirm-fullscreen-container">
-            <!-- Photo preview -->
-            <div class="confirm-photo-area">
-                <canvas id="confirm-preview-canvas"></canvas>
-                <!-- Red guide overlays -->
-                <div class="confirm-guide-overlay">
-                    <div class="confirm-kit-frame" id="confirm-kit-frame">
-                        <div class="confirm-guide-window" id="confirm-guide-window"></div>
-                        <div class="confirm-guide-well" id="confirm-guide-well"></div>
+                <div class="timeset-input-section">
+                    <div class="timeset-input-row">
+                        <input id="input-wait-min" type="number" class="time-digit-input" min="0" max="99"
+                            placeholder="--">
+                        <span class="time-unit">분</span>
+                        <input id="input-wait-sec" type="number" class="time-digit-input" min="0" max="59"
+                            placeholder="--">
+                        <span class="time-unit">초</span>
+                        <button id="btn-timeset-confirm" class="btn-timeset-ok">확인</button>
                     </div>
                 </div>
+
+                <div class="timeset-countdown">
+                    <p class="countdown-label">남은 시간</p>
+                    <div class="countdown-display">
+                        <span id="display-min" class="countdown-digit">--</span>
+                        <span class="countdown-sep">분</span>
+                        <span id="display-sec" class="countdown-digit">--</span>
+                        <span class="countdown-sep">초</span>
+                    </div>
+                    <p class="countdown-note">* 반응 대기 시간이 끝나면 자동으로<br>촬영 화면으로 넘어 갑니다.</p>
+                </div>
             </div>
 
-            <!-- Bottom question + buttons -->
-            <div class="confirm-bottom-panel">
-                <p class="confirm-question">Kit가 카메라 영역에 재대로 들어왔나요?</p>
-                <div class="confirm-btn-row">
-                    <button id="btn-confirm-no" class="btn-confirm-action btn-confirm-no">
-                        아니요<br><small>(재촬영 하기)</small>
-                    </button>
-                    <button id="btn-confirm-yes" class="btn-confirm-action btn-confirm-yes">네</button>
-                </div>
+            <div class="timeset-bottom">
+                <button id="btn-go-camera" class="btn-go-camera">바로 촬영하기</button>
                 <footer class="app-footer">Yellosis Inc. &#169;</footer>
             </div>
-        </div>
-    </main>
+        </main>
 
-    <!-- ==========================================
+        <!-- ==========================================
+         VIEW 3: Camera Screen (촬영 화면)
+         ========================================== -->
+        <main id="view-camera" class="view">
+            <div class="camera-container">
+                <!-- Camera Video -->
+                <video id="camera-video" autoplay muted playsinline></video>
+
+                <!-- Guide Overlay Layer -->
+                <div class="guide-overlay-layer">
+                    <div class="guide-kit-frame" id="guide-kit-frame">
+                        <!-- Strip window guide (red rectangle) -->
+                        <div class="guide-window-cutout"></div>
+                        <!-- Sample well guide (red circle) -->
+                        <div class="guide-sample-well"></div>
+                    </div>
+                </div>
+
+                <!-- Bottom Panel -->
+                <div class="camera-bottom-panel">
+                    <p class="guide-instruction-text">Kit를 카메라 영역에 맞추어 주세요</p>
+                    <div class="camera-controls-row">
+                        <button id="btn-capture-photo" class="btn-capture">촬영하기</button>
+                    </div>
+                    <footer class="app-footer app-footer--camera">Yellosis Inc. &#169;</footer>
+                </div>
+            </div>
+        </main>
+
+        <!-- ==========================================
+         VIEW 4: Photo Confirm Screen (확인 화면)
+         ========================================== -->
+        <main id="view-confirm" class="view">
+            <div class="confirm-fullscreen-container">
+                <!-- Photo preview -->
+                <div class="confirm-photo-area">
+                    <canvas id="confirm-preview-canvas"></canvas>
+                    <!-- Red guide overlays -->
+                    <div class="confirm-guide-overlay">
+                        <div class="confirm-kit-frame" id="confirm-kit-frame">
+                            <div class="confirm-guide-window" id="confirm-guide-window"></div>
+                            <div class="confirm-guide-well" id="confirm-guide-well"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom question + buttons -->
+                <div class="confirm-bottom-panel">
+                    <p class="confirm-question">Kit가 카메라 영역에 재대로 들어왔나요?</p>
+                    <div class="confirm-btn-row">
+                        <button id="btn-confirm-no" class="btn-confirm-action btn-confirm-no">
+                            아니요<br><small>(재촬영 하기)</small>
+                        </button>
+                        <button id="btn-confirm-yes" class="btn-confirm-action btn-confirm-yes">네</button>
+                    </div>
+                    <footer class="app-footer">Yellosis Inc. &#169;</footer>
+                </div>
+            </div>
+        </main>
+
+        <!-- ==========================================
          VIEW 5: Results Screen (검사결과 화면)
          ========================================== -->
-    <main id="view-results" class="view">
-        <div class="results-content">
-            <h1 class="results-title">검사결과</h1>
-            <p class="results-user-id">User_ID : <span id="result-user-id">yelloi</span> 님</p>
+        <main id="view-results" class="view">
+            <div class="results-content">
+                <h1 class="results-title">검사결과</h1>
+                <p class="results-user-id">User_ID : <span id="result-user-id">yelloi</span> 님</p>
 
-            <div class="results-table-container">
-                <table class="results-table">
-                    <thead>
-                        <tr>
-                            <th>검사일시</th>
-                            <th>검사결과</th>
-                            <th>농도(mg/dL)</th>
-                            <th>메모</th>
-                        </tr>
-                    </thead>
-                    <tbody id="results-table-body">
-                        <!-- Dynamically populated -->
-                    </tbody>
-                </table>
+                <div class="results-table-container">
+                    <table class="results-table">
+                        <thead>
+                            <tr>
+                                <th>검사일시</th>
+                                <th>검사결과</th>
+                                <th>농도(mg/dL)</th>
+                                <th>메모</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-table-body">
+                            <!-- Dynamically populated -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div id="results-pagination" class="pagination"></div>
+
+                <div class="results-actions-row">
+                    <button id="btn-export-csv" class="btn-sub-action">📊 CSV 다운로드</button>
+                    <button id="btn-open-settings" class="btn-sub-action">⚙️ 구글시트 연동 설정</button>
+                </div>
             </div>
 
-            <!-- Pagination -->
-            <div id="results-pagination" class="pagination"></div>
-
-            <div class="results-actions-row">
-                <button id="btn-export-csv" class="btn-sub-action">📊 CSV 다운로드</button>
-                <button id="btn-open-settings" class="btn-sub-action">⚙️ 구글시트 연동 설정</button>
+            <div class="results-bottom">
+                <button id="btn-return-home" class="btn-return-home">처음으로</button>
+                <footer class="app-footer">Yellosis Inc. &#169;</footer>
             </div>
+        </main>
+
+        <!-- Analyzing Overlay (분석 중 로딩) -->
+        <div id="analyzing-overlay" class="analyzing-overlay">
+            <div class="spinner"></div>
+            <p class="analyzing-text">AI 분석 중...</p>
+            <p class="analyzing-subtext">잠시만 기다려 주세요</p>
         </div>
 
-        <div class="results-bottom">
-            <button id="btn-return-home" class="btn-return-home">처음으로</button>
-            <footer class="app-footer">Yellosis Inc. &#169;</footer>
-        </div>
-    </main>
+        <!-- Toast Notification -->
+        <div id="toast" class="toast"></div>
 
-    <!-- Analyzing Overlay (분석 중 로딩) -->
-    <div id="analyzing-overlay" class="analyzing-overlay">
-        <div class="spinner"></div>
-        <p class="analyzing-text">AI 분석 중...</p>
-        <p class="analyzing-subtext">잠시만 기다려 주세요</p>
-    </div>
-
-    <!-- Toast Notification -->
-    <div id="toast" class="toast"></div>
-
-    <!-- ==========================================
+        <!-- ==========================================
          MEMO POPUP (메모 팝업)
          ========================================== -->
-    <div id="memo-popup" class="popup-overlay hidden">
-        <div class="popup-card">
-            <div class="popup-header">
-                <h3 class="popup-title">메모</h3>
-            </div>
-            <textarea id="memo-textarea" class="memo-textarea" placeholder="메모를 입력하세요." rows="5"></textarea>
-            <div class="popup-btn-row">
-                <button id="btn-memo-cancel" class="btn-popup-cancel">취소</button>
-                <button id="btn-memo-confirm" class="btn-popup-confirm">완료</button>
+        <div id="memo-popup" class="popup-overlay hidden">
+            <div class="popup-card">
+                <div class="popup-header">
+                    <h3 class="popup-title">메모</h3>
+                </div>
+                <textarea id="memo-textarea" class="memo-textarea" placeholder="메모를 입력하세요." rows="5"></textarea>
+                <div class="popup-btn-row">
+                    <button id="btn-memo-cancel" class="btn-popup-cancel">취소</button>
+                    <button id="btn-memo-confirm" class="btn-popup-confirm">완료</button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- ==========================================
+        <!-- ==========================================
          GRAPH ANALYSIS POPUP (흡광도 분석 팝업)
          ========================================== -->
-    <div id="graph-popup" class="popup-overlay hidden">
-        <div class="popup-card graph-popup-card">
-            <div class="popup-header graph-popup-header">
-                <div>
-                    <p class="graph-popup-sub">Green Channel (530nm)</p>
-                    <h3 class="popup-title">흡광도 피크 분석</h3>
+        <div id="graph-popup" class="popup-overlay hidden">
+            <div class="popup-card graph-popup-card">
+                <div class="popup-header graph-popup-header">
+                    <div>
+                        <p class="graph-popup-sub">Green Channel (530nm)</p>
+                        <h3 class="popup-title">흡광도 피크 분석</h3>
+                    </div>
+                    <button id="btn-graph-close" class="btn-popup-close">✕</button>
                 </div>
-                <button id="btn-graph-close" class="btn-popup-close">✕</button>
-            </div>
-            <div class="graph-popup-body">
-                <div class="graph-visuals">
-                    <canvas id="graph-strip-canvas" class="graph-strip-canvas"></canvas>
-                    <canvas id="graph-profile-canvas" class="graph-profile-canvas"></canvas>
+                <div class="graph-popup-body">
+                    <div class="graph-visuals">
+                        <canvas id="graph-strip-canvas" class="graph-strip-canvas"></canvas>
+                        <canvas id="graph-profile-canvas" class="graph-profile-canvas"></canvas>
+                    </div>
+                    <div class="graph-metrics-grid">
+                        <div class="graph-metric-item">
+                            <span class="graph-metric-label">T-Line 강도</span>
+                            <span id="metric-t-intensity" class="graph-metric-value t-value">-</span>
+                        </div>
+                        <div class="graph-metric-item">
+                            <span class="graph-metric-label">C-Line 강도</span>
+                            <span id="metric-c-intensity" class="graph-metric-value c-value">-</span>
+                        </div>
+                        <div class="graph-metric-item">
+                            <span class="graph-metric-label">분석신뢰도</span>
+                            <span id="metric-confidence" class="graph-metric-value">-</span>
+                        </div>
+                        <div class="graph-metric-item">
+                            <span class="graph-metric-label">신호대잡음비</span>
+                            <span id="metric-snr" class="graph-metric-value">-</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="graph-metrics-grid">
-                    <div class="graph-metric-item">
-                        <span class="graph-metric-label">T-Line 강도</span>
-                        <span id="metric-t-intensity" class="graph-metric-value t-value">-</span>
-                    </div>
-                    <div class="graph-metric-item">
-                        <span class="graph-metric-label">C-Line 강도</span>
-                        <span id="metric-c-intensity" class="graph-metric-value c-value">-</span>
-                    </div>
-                    <div class="graph-metric-item">
-                        <span class="graph-metric-label">분석신뢰도</span>
-                        <span id="metric-confidence" class="graph-metric-value">-</span>
-                    </div>
-                    <div class="graph-metric-item">
-                        <span class="graph-metric-label">신호대잡음비</span>
-                        <span id="metric-snr" class="graph-metric-value">-</span>
-                    </div>
+                <div class="popup-btn-row single">
+                    <button id="btn-graph-close2" class="btn-popup-confirm">닫기</button>
                 </div>
-            </div>
-            <div class="popup-btn-row single">
-                <button id="btn-graph-close2" class="btn-popup-confirm">닫기</button>
             </div>
         </div>
-    </div>
 
-    <!-- ==========================================
+        <!-- ==========================================
          SETTINGS POPUP (설정 팝업 - 구글 시트 Webhook URL)
          ========================================== -->
-    <div id="settings-popup" class="popup-overlay hidden">
-        <div class="popup-card">
-            <div class="popup-header">
-                <h3 class="popup-title">구글 시트 연동 설정</h3>
-                <button id="btn-settings-close" class="btn-popup-close">✕</button>
-            </div>
-            <div style="padding: 16px;">
-                <p style="font-size: 12px; color: #64748b; margin-bottom: 8px; line-height: 1.5;">
-                    Apps Script를 [웹 앱]으로 배포한 후 발급받은 URL을 입력하세요. 검사 시 실시간 자동 동기화됩니다.
-                </p>
-                <input id="input-webhook-url" type="url" class="login-input" style="font-size: 12px; height: 42px;" value="https://script.google.com/macros/s/AKfycbzyZ_TTNI1Yh9LeGFFR3u2dAW7wAOJUr15HS032lEPDUovWq5syJelMRBbEjV2DthF7/exec" placeholder="https://script.google.com/macros/s/.../exec">
-                <p style="font-size: 11px; color: #94a3b8; margin-top: 6px;">시트 ID: 1ckyAywMytLJCClUgwizQakq5xdQmm_5fNeQYSW4S3jo</p>
-            </div>
-            <div class="popup-btn-row">
-                <button id="btn-settings-cancel" class="btn-popup-cancel">취소</button>
-                <button id="btn-settings-save" class="btn-popup-confirm">저장</button>
+        <div id="settings-popup" class="popup-overlay hidden">
+            <div class="popup-card">
+                <div class="popup-header">
+                    <h3 class="popup-title">구글 시트 연동 설정</h3>
+                    <button id="btn-settings-close" class="btn-popup-close">✕</button>
+                </div>
+                <div style="padding: 16px;">
+                    <p style="font-size: 12px; color: #64748b; margin-bottom: 8px; line-height: 1.5;">
+                        Apps Script를 [웹 앱]으로 배포한 후 발급받은 URL을 입력하세요. 검사 시 실시간 자동 동기화됩니다.
+                    </p>
+                    <input id="input-webhook-url" type="url" class="login-input" style="font-size: 12px; height: 42px;"
+                        value="https://script.google.com/macros/s/AKfycbzyZ_TTNI1Yh9LeGFFR3u2dAW7wAOJUr15HS032lEPDUovWq5syJelMRBbEjV2DthF7/exec"
+                        placeholder="https://script.google.com/macros/s/.../exec">
+                    <p style="font-size: 11px; color: #94a3b8; margin-top: 6px;">시트 ID:
+                        1ckyAywMytLJCClUgwizQakq5xdQmm_5fNeQYSW4S3jo</p>
+                </div>
+                <div class="popup-btn-row">
+                    <button id="btn-settings-cancel" class="btn-popup-cancel">취소</button>
+                    <button id="btn-settings-save" class="btn-popup-confirm">저장</button>
+                </div>
             </div>
         </div>
-    </div>
 
-</div><!-- /.app-container -->
+    </div><!-- /.app-container -->
 
-<!-- Scripts -->
-<script src="js/test_samples.js"></script>
-<script src="js/lfa_analyzer.js"></script>
-<script src="js/google_sheets.js"></script>
-<script src="js/app.js"></script>
+    <!-- Scripts -->
+    <script src="js/test_samples.js"></script>
+    <script src="js/lfa_analyzer.js"></script>
+    <script src="js/google_sheets.js"></script>
+    <script src="js/app.js"></script>
 </body>
+
 </html>
