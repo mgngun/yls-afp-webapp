@@ -76,6 +76,37 @@ class GoogleSheetsSync {
         }
     }
 
+    /**
+     * Google Drive File ID로부터 Base64 이미지 DataURL을 가져옵니다. (CORS 우회)
+     * @param {string} fileId 
+     */
+    async fetchDriveImageBase64(fileId) {
+        if (!fileId) return null;
+        const cfg = this.getConfig();
+        if (!cfg.webhookUrl) return null;
+
+        const targetUrl = new URL(cfg.webhookUrl);
+        targetUrl.searchParams.set('action', 'getImage');
+        targetUrl.searchParams.set('fileId', fileId);
+        targetUrl.searchParams.set('_t', Date.now().toString());
+
+        try {
+            const res = await fetch(targetUrl.toString(), {
+                method: 'GET',
+                mode: 'cors'
+            });
+            if (!res.ok) return null;
+            const json = await res.json();
+            if (json && json.status === 'success' && json.dataUrl) {
+                return json.dataUrl;
+            }
+            return null;
+        } catch (err) {
+            console.warn('fetchDriveImageBase64 error:', err);
+            return null;
+        }
+    }
+
     async syncResult(analysisResult, user = {}, memo = '', cropFilename = '', cropDataUrl = null) {
         if (!analysisResult) return;
         const diag = analysisResult.diagnosis || {};

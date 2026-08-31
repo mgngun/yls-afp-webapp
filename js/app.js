@@ -989,15 +989,43 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // ── Strip image ──
+        // ── Strip image & Dynamic Analysis ──
         const sc = el.graphStripCanvas;
         if (sc) {
-            const rawUrl = record.cropImageDataUrl || record.cropUrl;
-            const resolvedUrl = resolveImageUrl(rawUrl);
+            sc.width = 72;
+            sc.height = 190;
+            const ctx = sc.getContext('2d');
+            ctx.fillStyle = '#f1f5f9';
+            ctx.fillRect(0, 0, 72, 190);
+            ctx.fillStyle = '#64748b';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('로딩 중...', 36, 95);
 
-            if (resolvedUrl) {
+            // 1. 이미 Base64 데이터가 로컬에 있는 경우
+            if (record.cropImageDataUrl && record.cropImageDataUrl.startsWith('data:image/')) {
+                renderStripAndAnalyze(record.cropImageDataUrl);
+            } 
+            // 2. 구글 드라이브 파일 ID가 있는 경우 (GAS 프록시로 Base64 조회)
+            else if (record.driveFileId && state.sheetsSync) {
+                state.sheetsSync.fetchDriveImageBase64(record.driveFileId).then(b64 => {
+                    if (b64) {
+                        record.cropImageDataUrl = b64;
+                        renderStripAndAnalyze(b64);
+                    } else {
+                        showImagePlaceholder('이미지 로드 실패');
+                    }
+                }).catch(() => showImagePlaceholder('이미지 오류'));
+            }
+            // 3. 일반 이미지 URL인 경우
+            else if (record.cropUrl) {
+                renderStripAndAnalyze(record.cropUrl);
+            } else {
+                showImagePlaceholder('이미지 없음');
+            }
+
+            function renderStripAndAnalyze(imgSrc) {
                 const img = new Image();
-                img.crossOrigin = 'anonymous';
                 img.onload = () => {
                     sc.width = img.width || 72;
                     sc.height = img.height || 190;
@@ -1005,52 +1033,48 @@ document.addEventListener('DOMContentLoaded', () => {
                     sCtx.clearRect(0, 0, sc.width, sc.height);
                     sCtx.drawImage(img, 0, 0);
 
-                    // 만약 프로필 데이터가 없는 구글 시트 과거 기록인 경우, 즉시 프로필 계산하여 그래프 렌더링
+                    // 과거 기록에 피크 분석 데이터가 없는 경우, 즉시 LFAAnalyzer로 실시간 계산
                     if (!record.profileData && state.analyzer) {
-                        try {
-                            state.analyzer.analyze(sc, { isPreCropped: true }).then(analysisRes => {
-                                if (analysisRes && analysisRes.visualData) {
-                                    const vd = analysisRes.visualData;
-                                    record.profileData = {
-                                        corrected: Array.from(vd.correctedProfile || []),
-                                        cLineIndex: vd.cLineIndex,
-                                        tLineIndex: vd.tLineIndex,
-                                        cLineDetected: vd.cLineDetected,
-                                        tLineDetected: vd.tLineDetected,
-                                        cLineRange: vd.cLineRange,
-                                        tLineRange: vd.tLineRange
-                                    };
-                                    record.metrics = analysisRes.metrics;
-                                    drawAbsorbanceGraph(record);
-                                }
-                            }).catch(() => {});
-                        } catch (_) {}
+                        state.analyzer.analyze(sc, { isPreCropped: true }).then(analysisRes => {
+                            if (analysisRes && analysisRes.visualData) {
+                                const vd = analysisRes.visualData;
+                                record.profileData = {
+                                    corrected: Array.from(vd.correctedProfile || []),
+                                    cLineIndex: vd.cLineIndex,
+                                    tLineIndex: vd.tLineIndex,
+                                    cLineDetected: vd.cLineDetected,
+                                    tLineDetected: vd.tLineDetected,
+                                    cLineRange: vd.cLineRange,
+                                    tLineRange: vd.tLineRange
+                                };
+                                record.metrics = analysisRes.metrics;
+                                record.confidence = analysisRes.diagnosis?.confidence;
+
+                                // 그래프 및 수치 업데이트
+                                drawAbsorbanceGraph(record);
+                                const m = record.metrics || {};
+                                setText(el.metricT, m.tPeakHeight != null ? m.tPeakHeight.toFixed(3) : '-');
+                                setText(el.metricC, m.cPeakHeight != null ? m.cPeakHeight.toFixed(3) : '-');
+                                setText(el.metricConf, record.confidence != null ? record.confidence.toFixed(1) + '%' : '-');
+                                setText(el.metricSnr, m.signalToNoise != null ? m.signalToNoise.toFixed(1) + ' dB' : '-');
+                            }
+                        }).catch(e => console.warn('Realtime profile analysis failed:', e));
                     }
                 };
-                img.onerror = () => {
-                    sc.width = 72;
-                    sc.height = 190;
-                    const ctx = sc.getContext('2d');
-                    ctx.fillStyle = '#f1f5f9';
-                    ctx.fillRect(0, 0, 72, 190);
-                    ctx.fillStyle = '#64748b';
-                    ctx.font = '10px sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('드라이브', 36, 90);
-                    ctx.fillText('이미지', 36, 104);
-                };
-                img.src = resolvedUrl;
-            } else {
+                img.onerror = () => showImagePlaceholder('이미지 오류');
+                img.src = imgSrc;
+            }
+
+            function showImagePlaceholder(text) {
                 sc.width = 72;
                 sc.height = 190;
-                const ctx = sc.getContext('2d');
-                ctx.fillStyle = '#e2e8f0';
-                ctx.fillRect(0, 0, 72, 190);
-                ctx.fillStyle = '#94a3b8';
-                ctx.font = '10px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('이미지', 36, 90);
-                ctx.fillText('없음', 36, 104);
+                const c = sc.getContext('2d');
+                c.fillStyle = '#f8fafc';
+                c.fillRect(0, 0, 72, 190);
+                c.fillStyle = '#94a3b8';
+                c.font = '10px sans-serif';
+                c.textAlign = 'center';
+                c.fillText(text, 36, 95);
             }
         }
 

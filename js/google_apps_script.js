@@ -164,8 +164,31 @@ function doPost(e) {
 function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || "";
   var targetUser = (e && e.parameter && e.parameter.userId) || "";
+  var fileIdParam = (e && e.parameter && e.parameter.fileId) || "";
 
-  // 1. 전체 기록 조회 (Fetch History)
+  // 1. 단일 드라이브 이미지 Base64 가져오기 (CORS 우회)
+  if (action === "getImage" && fileIdParam) {
+    try {
+      var file = DriveApp.getFileById(fileIdParam);
+      var blob = file.getBlob();
+      var b64 = Utilities.base64Encode(blob.getBytes());
+      var contentType = blob.getContentType() || "image/jpeg";
+      var dataUrl = "data:" + contentType + ";base64," + b64;
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        fileId: fileIdParam,
+        dataUrl: dataUrl
+      })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "error",
+        message: err.toString()
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  // 2. 전체 기록 조회 (Fetch History)
   if (action === "fetch" || action === "getHistory") {
     try {
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
@@ -175,7 +198,7 @@ function doGet(e) {
       if (lastRow > 1) {
         // 헤더 제외 2행부터 전체 데이터 읽기 (1~9열)
         var rangeData = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
-        var rangeFormulas = sheet.getRange(2, 9, lastRow - 1, 1).getFormulas(); // Crop_image 열의 HYPERLINK 수식 읽기
+        var rangeFormulas = sheet.getRange(2, 9, lastRow - 1, 1).getFormulas();
 
         for (var i = 0; i < rangeData.length; i++) {
           var row = rangeData[i];
@@ -214,8 +237,9 @@ function doGet(e) {
             concStr = (valRaw !== "" && valRaw !== null && valRaw !== undefined && valRaw !== "-") ? String(valRaw) : "0.01";
           }
 
-          // 이미지 URL 및 파일명 추출 (수식: =HYPERLINK("URL", "FILENAME") 또는 일반 URL/파일명)
+          // 이미지 URL, File ID 및 파일명 추출
           var cropUrl = "";
+          var driveFileId = "";
           var cropName = cropVal;
 
           if (cropForm && cropForm.indexOf("HYPERLINK") > -1) {
@@ -226,6 +250,11 @@ function doGet(e) {
             }
           } else if (cropVal.indexOf("http") === 0) {
             cropUrl = cropVal;
+          }
+
+          if (cropUrl) {
+            var idMatch = cropUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || cropUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+            if (idMatch) driveFileId = idMatch[1];
           }
 
           results.push({
@@ -240,8 +269,9 @@ function doGet(e) {
             concentrationStr: concStr,
             error: errStr,
             memo: memoStr,
-            cropImageDataUrl: cropUrl || null,
+            cropImageDataUrl: null, // 프론트엔드에서 fileId로 필요할 때 즉시 로드
             cropUrl: cropUrl || null,
+            driveFileId: driveFileId || null,
             cropFilename: cropName || null
           });
         }
@@ -264,10 +294,10 @@ function doGet(e) {
     }
   }
 
-  // 2. 기본 상태 응답
+  // 3. 기본 상태 응답
   return ContentService.createTextOutput(JSON.stringify({
     status: "online",
-    message: "YLS LFA Kit API v4.4.0 is running",
+    message: "YLS LFA Kit API v4.4.1 is running",
     driveFolderId: DRIVE_FOLDER_ID,
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);
