@@ -7,8 +7,65 @@
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>YLS - AFP Testing for Cancer | LFA 스마트폰 AI 진단</title>
     <meta name="description" content="YLS AFP Testing for Cancer - LFA 스마트폰 카메라 AI 진단 웹앱">
-    <!-- <link rel="stylesheet" href="css/style.css?v=4.0.0"> -->
-    <link rel="stylesheet" href="css/style.css?v=4.4.3">
+    <link rel="stylesheet" href="css/style.css?v=4.4.4">
+    <!-- Login 화면의 사용자 추가 버튼용 Noto Sans KR -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        /* 사용자 추가 팝업: 한글=Noto Sans KR, 영문=Gilroy
+           (폰트 크기/색상/기존 레이아웃은 변경하지 않음) */
+        #adduser-popup,
+        #adduser-popup .popup-card,
+        #adduser-popup .popup-header,
+        #adduser-popup .popup-title,
+        #adduser-popup .popup-help-text,
+        #adduser-popup .login-input,
+        #adduser-popup .login-input::placeholder,
+        #adduser-popup .btn-popup-close,
+        #adduser-popup .btn-popup-cancel,
+        #adduser-popup .btn-popup-confirm,
+        #adduser-popup .login-error {
+            /* Gilroy가 지원하지 않는 한글은 Noto Sans KR로 자동 fallback */
+            font-family: 'Gilroy', 'Noto Sans KR', sans-serif;
+        }
+
+        /* 첨부 시안과 동일한 사용자 추가 버튼 */
+        #view-login .btn-adduser {
+            display: block;
+            width: fit-content;
+            margin: 7px 0 0 auto;
+            padding: 0 6px 2px;
+            border: 0;
+            outline: 0;
+            background: transparent;
+            color: #7F7F7F;
+            font-family: 'Noto Sans KR', sans-serif;
+            font-size: 14px;
+            font-weight: 400;
+            line-height: 1.5;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+            cursor: pointer;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        #view-login .btn-adduser:hover {
+            color: #7F7F7F;
+            background: transparent;
+        }
+
+        #view-login .btn-adduser:active {
+            opacity: 0.75;
+        }
+
+        #view-login .btn-adduser:focus-visible {
+            border-radius: 3px;
+            outline: 1px solid #7F7F7F;
+            outline-offset: 2px;
+        }
+    </style>
 </head>
 
 <body>
@@ -34,7 +91,9 @@
                     autocomplete="username">
                 <input id="input-password" type="password" class="login-input" placeholder="Password"
                     autocomplete="current-password">
+                <p id="login-error" class="login-error hidden"></p>
                 <button id="btn-login" class="btn-login">Login</button>
+                <button id="btn-open-adduser" class="btn-adduser">+사용자 추가</button>
             </div>
 
             <footer class="app-footer">Yellosis Inc. &#169;</footer>
@@ -44,8 +103,15 @@
          VIEW 2: Time Setting Screen (시간설정 화면)
          ========================================== -->
         <main id="view-timesetting" class="view">
-            <!-- Logout 버튼 (우측 상단) -->
-            <button id="btn-logout" class="btn-logout">Logout</button>
+            <!-- 톱니바퀴 설정 버튼 (우측 상단, Logout 자리 대체) -->
+            <button id="btn-settings-menu" class="btn-icon-topright" aria-label="설정">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                    xmlns="http://www.w3.org/2000/svg" stroke="#1e293b" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+            </button>
 
             <div class="timeset-body">
                 <p id="timeset-greeting" class="timeset-greeting">'yelloi' 님 환영합니다.</p>
@@ -89,7 +155,6 @@
          ========================================== -->
         <main id="view-camera" class="view">
             <div class="camera-container">
-                <!-- Top Left Back Button (이전 페이지로 이동) -->
                 <button id="btn-back-from-camera" class="btn-top-back" aria-label="이전 화면으로">
                     <svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M8.75 1.03125L1.25 8.0625L8.75 15.0938" stroke="#F8F8F8" stroke-width="1.5"
@@ -97,20 +162,15 @@
                     </svg>
                 </button>
 
-                <!-- Camera Video -->
                 <video id="camera-video" autoplay muted playsinline></video>
 
-                <!-- Guide Overlay Layer -->
                 <div class="guide-overlay-layer">
                     <div class="guide-kit-frame" id="guide-kit-frame">
-                        <!-- Strip window guide (red rectangle) -->
                         <div class="guide-window-cutout"></div>
-                        <!-- Sample well guide (red circle) -->
                         <div class="guide-sample-well"></div>
                     </div>
                 </div>
 
-                <!-- Bottom Panel -->
                 <div class="camera-bottom-panel">
                     <p class="guide-instruction-text">Kit를 카메라 영역에 맞추어 주세요.</p>
                     <div class="camera-controls-row">
@@ -126,7 +186,6 @@
          ========================================== -->
         <main id="view-confirm" class="view">
             <div class="confirm-fullscreen-container">
-                <!-- Top Left Back Button (이전 페이지로 이동) -->
                 <button id="btn-back-from-confirm" class="btn-top-back" aria-label="이전 화면으로">
                     <svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M8.75 1.03125L1.25 8.0625L8.75 15.0938" stroke="#F8F8F8" stroke-width="1.5"
@@ -134,10 +193,8 @@
                     </svg>
                 </button>
 
-                <!-- Photo preview -->
                 <div class="confirm-photo-area">
                     <canvas id="confirm-preview-canvas"></canvas>
-                    <!-- Red guide overlays -->
                     <div class="confirm-guide-overlay">
                         <div class="confirm-kit-frame" id="confirm-kit-frame">
                             <div class="confirm-guide-window" id="confirm-guide-window"></div>
@@ -146,7 +203,6 @@
                     </div>
                 </div>
 
-                <!-- Bottom question + buttons -->
                 <div class="confirm-bottom-panel">
                     <p class="confirm-question">Kit가 카메라 영역에 재대로 들어왔나요?</p>
                     <div class="confirm-btn-row">
@@ -178,13 +234,10 @@
                                 <th>메모</th>
                             </tr>
                         </thead>
-                        <tbody id="results-table-body">
-                            <!-- Dynamically populated -->
-                        </tbody>
+                        <tbody id="results-table-body"></tbody>
                     </table>
                 </div>
 
-                <!-- Pagination -->
                 <div id="results-pagination" class="pagination"></div>
 
                 <div class="results-actions-row">
@@ -199,19 +252,17 @@
             </div>
         </main>
 
-        <!-- Analyzing Overlay (분석 중 로딩) -->
+        <!-- Analyzing Overlay -->
         <div id="analyzing-overlay" class="analyzing-overlay">
             <div class="spinner"></div>
             <p class="analyzing-text">AI 분석 중...</p>
             <p class="analyzing-subtext">잠시만 기다려 주세요</p>
         </div>
 
-        <!-- Toast Notification -->
+        <!-- Toast -->
         <div id="toast" class="toast"></div>
 
-        <!-- ==========================================
-         MEMO POPUP (메모 팝업)
-         ========================================== -->
+        <!-- MEMO POPUP -->
         <div id="memo-popup" class="popup-overlay hidden">
             <div class="popup-card">
                 <div class="popup-header">
@@ -225,9 +276,7 @@
             </div>
         </div>
 
-        <!-- ==========================================
-         GRAPH ANALYSIS POPUP (흡광도 분석 팝업)
-         ========================================== -->
+        <!-- GRAPH ANALYSIS POPUP -->
         <div id="graph-popup" class="popup-overlay hidden">
             <div class="popup-card graph-popup-card">
                 <div class="popup-header graph-popup-header">
@@ -270,9 +319,7 @@
             </div>
         </div>
 
-        <!-- ==========================================
-         SETTINGS POPUP (설정 팝업 - 구글 시트 Webhook URL)
-         ========================================== -->
+        <!-- SETTINGS POPUP (구글 시트 Webhook) -->
         <div id="settings-popup" class="popup-overlay hidden">
             <div class="popup-card">
                 <div class="popup-header">
@@ -296,11 +343,72 @@
             </div>
         </div>
 
+        <!-- ==========================================
+         ADD USER POPUP (사용자 추가)
+         ========================================== -->
+        <div id="adduser-popup" class="popup-overlay hidden">
+            <div class="popup-card">
+                <div class="popup-header">
+                    <h3 class="popup-title">새 사용자 등록</h3>
+                    <button id="btn-adduser-close" class="btn-popup-close">✕</button>
+                </div>
+                <div style="padding:16px;">
+                    <p class="popup-help-text">
+                        User_ID는 영문 1~8자 (언더스코어 _ 만 허용). Password는 4자 이상.
+                    </p>
+                    <input id="input-new-username" type="text" class="login-input"
+                        placeholder="User ID (영문 1~8자)" maxlength="8" autocomplete="off">
+                    <input id="input-new-password" type="password" class="login-input"
+                        placeholder="Password" autocomplete="new-password">
+                    <input id="input-new-password-confirm" type="password" class="login-input"
+                        placeholder="Password 확인" autocomplete="new-password">
+                    <p id="adduser-error" class="login-error hidden"></p>
+                </div>
+                <div class="popup-btn-row">
+                    <button id="btn-adduser-cancel" class="btn-popup-cancel">취소</button>
+                    <button id="btn-adduser-confirm" class="btn-popup-confirm">등록</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==========================================
+         USER SETTINGS POPUP (톱니바퀴 → 설정)
+         - a. 현재 user_ID
+         - b. Password 변경
+         - c. Logout 버튼
+         ========================================== -->
+        <div id="user-settings-popup" class="popup-overlay hidden">
+            <div class="popup-card">
+                <div class="popup-header">
+                    <h3 class="popup-title">설정</h3>
+                    <button id="btn-user-settings-close" class="btn-popup-close">✕</button>
+                </div>
+                <div style="padding:16px;">
+                    <label class="settings-label">현재 User_ID</label>
+                    <div id="current-user-id-display" class="readonly-display">yelloi</div>
+
+                    <label class="settings-label" style="margin-top:14px;">Password 변경</label>
+                    <input id="input-current-password" type="password" class="login-input"
+                        placeholder="현재 Password" autocomplete="current-password">
+                    <input id="input-new-password2" type="password" class="login-input"
+                        placeholder="새 Password" autocomplete="new-password">
+                    <input id="input-new-password-confirm2" type="password" class="login-input"
+                        placeholder="새 Password 확인" autocomplete="new-password">
+                    <p id="user-settings-error" class="login-error hidden"></p>
+                    <p id="user-settings-success" class="login-success hidden"></p>
+
+                    <button id="btn-user-settings-logout" class="btn-logout-from-settings">Logout</button>
+                </div>
+                <div class="popup-btn-row">
+                    <button id="btn-user-settings-cancel" class="btn-popup-cancel">닫기</button>
+                    <button id="btn-user-settings-save" class="btn-popup-confirm">Password 저장</button>
+                </div>
+            </div>
+        </div>
+
     </div><!-- /.app-container -->
 
-    <!-- ==========================================
-         앱 종료 확인 팝업 (Android 뒤로가기)
-         ========================================== -->
+    <!-- 앱 종료 확인 팝업 (Android 뒤로가기) -->
     <div id="exit-confirm-popup" class="popup-overlay hidden">
         <div class="popup-card exit-popup-card">
             <p class="exit-popup-msg">앱을 종료하시겠습니까?</p>
@@ -312,10 +420,11 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/test_samples.js?v=4.4.3"></script>
-    <script src="js/lfa_analyzer.js?v=4.4.3"></script>
-    <script src="js/google_sheets.js?v=4.4.3"></script>
-    <script src="js/app.js?v=4.4.3"></script>
+    <script src="js/test_samples.js?v=4.4.4"></script>
+    <script src="js/lfa_analyzer.js?v=4.4.4"></script>
+    <script src="js/google_sheets.js?v=4.4.4"></script>
+    <script src="js/app.js?v=4.4.4"></script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v3d52b47920f24c319d37e2661827c42b1787588026925" integrity="sha512-d9sL6GJLXn6fInD1+TVXhTcQOsmxeHfmHAvwGDIxp5TO+uo1fiWW7mHomMj4MLRlCsJDTqXzWLHJFFlPCEIj/A==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
 </body>
 
 </html>
