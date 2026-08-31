@@ -1296,31 +1296,40 @@ body {
 }
 
 /* ==========================================================================
-   Timesetting — Logout & 지난 결과 보기 버튼
+   Timesetting — 톱니바퀴 설정 버튼 & 지난 결과 보기
    ========================================================================== */
 
-/* Logout 버튼: 우측 상단 텍스트 버튼 */
-.btn-logout {
+/* (구) .btn-logout 자리는 톱니바퀴 .btn-icon-topright 로 대체 */
+
+.btn-icon-topright {
     position: absolute;
-    top: 35px;
+    top: 24px;
     right: 20px;
-    background: none;
-    border: none;
-    font-size: 15px;
-    font-family: var(--font-gilroy), var(--font-family);
-    font-weight: 500;
-    color: #7F7F7F;
+    width: 42px;
+    height: 42px;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid var(--card-border);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    padding: 4px 6px;
-    letter-spacing: 0.01em;
-    -webkit-tap-highlight-color: transparent;
-    z-index: 10;
+    z-index: 30;
+    backdrop-filter: blur(4px);
+    transition: transform 0.2s, background 0.2s;
 }
 
-.btn-logout:hover,
-.btn-logout:active {
-    color: #555555;
-    text-decoration: underline;
+.btn-icon-topright:hover {
+    transform: rotate(45deg);
+    background: #ffffff;
+}
+
+.btn-icon-topright:active {
+    transform: scale(0.96);
+}
+
+.btn-icon-topright svg {
+    display: block;
 }
 
 /* view-timesetting에 relative 위치 보장 (btn-logout 절대위치 기준) */
@@ -1353,6 +1362,128 @@ body {
 .btn-view-results:active {
     color: #555555;
     text-decoration: underline;
+}
+
+/* ==========================================================================
+   Login — 인라인 에러 메시지 & 사용자 추가 버튼
+   ========================================================================== */
+
+.login-error {
+    width: 100%;
+    max-width: 320px;
+    margin: 6px 0 0;
+    padding: 10px 14px;
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    text-align: center;
+    line-height: 1.4;
+}
+
+.login-error.hidden {
+    display: none;
+}
+
+.login-success {
+    width: 100%;
+    max-width: 320px;
+    margin: 6px 0 0;
+    padding: 10px 14px;
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #a7f3d0;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    text-align: center;
+    line-height: 1.4;
+}
+
+.login-success.hidden {
+    display: none;
+}
+
+.btn-adduser {
+    width: 100%;
+    max-width: 320px;
+    margin-top: 8px;
+    background: transparent;
+    color: var(--primary);
+    border: 1.5px solid var(--primary);
+    border-radius: var(--radius-md);
+    padding: 12px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: var(--font-family);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.btn-adduser:hover {
+    background: var(--primary);
+    color: #ffffff;
+}
+
+.btn-adduser:active {
+    transform: scale(0.98);
+}
+
+/* ==========================================================================
+   사용자 설정 팝업 (label / readonly / help / Logout-in-popup)
+   ========================================================================== */
+
+.settings-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    letter-spacing: 0.02em;
+}
+
+.readonly-display {
+    width: 100%;
+    padding: 12px 14px;
+    background: #f1f5f9;
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-sm);
+    font-size: 15px;
+    font-weight: 700;
+    font-family: monospace;
+    color: var(--text-main);
+    letter-spacing: 0.04em;
+}
+
+.popup-help-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
+
+.btn-logout-from-settings {
+    width: 100%;
+    margin-top: 18px;
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: var(--font-family);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.btn-logout-from-settings:hover {
+    background: #b91c1c;
+    color: #ffffff;
+}
+
+.btn-logout-from-settings:active {
+    transform: scale(0.98);
 }
 
 /* ==========================================================================
