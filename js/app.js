@@ -11,14 +11,36 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─────────────────────────────────────────────────────────────
     // Constants & State
     // ─────────────────────────────────────────────────────────────
-    const VALID_CREDENTIALS = { username: 'yelloi', password: '1111' };
     const PAGE_SIZE = 15;
+
+    // 기존 단일 계정 yelloi/1111 시드 (최초 실행 시에만 자동 등록)
+    const DEFAULT_USERS = [{ username: 'yelloi', password: '1111' }];
+    const USERNAME_REGEX = /^[A-Za-z_]{1,8}$/;
+    const MIN_PASSWORD_LEN = 4;
+    const USERS_DB_KEY = 'yls_users_db';
+
+    function loadUsers() {
+        try {
+            const raw = localStorage.getItem(USERS_DB_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch (e) { /* fall through */ }
+        // 최초 실행 또는 손상된 경우 -> 시드 계정으로 초기화
+        localStorage.setItem(USERS_DB_KEY, JSON.stringify(DEFAULT_USERS));
+        return DEFAULT_USERS.slice();
+    }
+    function saveUsers(users) {
+        localStorage.setItem(USERS_DB_KEY, JSON.stringify(users));
+    }
 
     const state = {
         currentUser: {
             username: 'yelloi',
             isLoggedIn: false
         },
+        users: loadUsers(),
         stream: null,
         capturedCanvas: null,
         analyzer: typeof LFAAnalyzer === 'function' ? new LFAAnalyzer() : null,
@@ -135,8 +157,32 @@ document.addEventListener('DOMContentLoaded', () => {
         btnSettingsCancel: document.getElementById('btn-settings-cancel'),
         btnSettingsSave: document.getElementById('btn-settings-save'),
         // Timesetting extras
-        btnLogout: document.getElementById('btn-logout'),
         btnViewResults: document.getElementById('btn-view-results'),
+        // Login -- 사용자 추가 / 인라인 에러
+        loginError: document.getElementById('login-error'),
+        btnOpenAddUser: document.getElementById('btn-open-adduser'),
+        // 사용자 추가 팝업
+        addUserPopup: document.getElementById('adduser-popup'),
+        inputNewUsername: document.getElementById('input-new-username'),
+        inputNewPassword: document.getElementById('input-new-password'),
+        inputNewPasswordConfirm: document.getElementById('input-new-password-confirm'),
+        btnAddUserClose: document.getElementById('btn-adduser-close'),
+        btnAddUserCancel: document.getElementById('btn-adduser-cancel'),
+        btnAddUserConfirm: document.getElementById('btn-adduser-confirm'),
+        addUserError: document.getElementById('adduser-error'),
+        // 톱니바퀴 -> 사용자 설정
+        btnSettingsMenu: document.getElementById('btn-settings-menu'),
+        userSettingsPopup: document.getElementById('user-settings-popup'),
+        currentUserIdDisplay: document.getElementById('current-user-id-display'),
+        inputCurrentPassword: document.getElementById('input-current-password'),
+        inputNewPassword2: document.getElementById('input-new-password2'),
+        inputNewPasswordConfirm2: document.getElementById('input-new-password-confirm2'),
+        btnUserSettingsClose: document.getElementById('btn-user-settings-close'),
+        btnUserSettingsCancel: document.getElementById('btn-user-settings-cancel'),
+        btnUserSettingsSave: document.getElementById('btn-user-settings-save'),
+        btnUserSettingsLogout: document.getElementById('btn-user-settings-logout'),
+        userSettingsError: document.getElementById('user-settings-error'),
+        userSettingsSuccess: document.getElementById('user-settings-success'),
         // Exit confirm popup
         exitConfirmPopup: document.getElementById('exit-confirm-popup'),
         btnExitYes: document.getElementById('btn-exit-yes'),
@@ -218,23 +264,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ─────────────────────────────────────────────────────────────
-    // LOGIN
-    // ─────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────
+    // LOGIN (다중 사용자 DB 매칭)
+    // ────────────────────────────────────────────────────────────
+    function showLoginError(msg) {
+        if (!el.loginError) { showToast(msg); return; }
+        el.loginError.textContent = msg;
+        el.loginError.classList.remove('hidden');
+    }
+    function clearLoginError() {
+        if (!el.loginError) return;
+        el.loginError.textContent = '';
+        el.loginError.classList.add('hidden');
+    }
+
     function doLogin() {
         const username = (el.inputUsername?.value || '').trim();
         const password = (el.inputPassword?.value || '').trim();
 
-        if (username === VALID_CREDENTIALS.username &&
-            password === VALID_CREDENTIALS.password) {
+        const match = state.users.find(
+            u => u.username === username && u.password === password
+        );
+
+        if (match) {
             state.currentUser.username = username;
             state.currentUser.isLoggedIn = true;
             localStorage.setItem('yls_user_logged_in', 'true');
             localStorage.setItem('yls_user_name', username);
+            clearLoginError();
+            if (el.inputPassword) el.inputPassword.value = '';
             navigateTo('timesetting');
             // 구글 시트에서 전체 기록 백그라운드 동기화
             loadAndRenderResultsTable();
         } else {
-            showToast('아이디 또는 비밀번호가 올바르지 않습니다.');
+            showLoginError('아이디 또는 비밀번호가 올바르지 않거나 등록되지 않은 사용자입니다.');
             if (el.inputPassword) el.inputPassword.value = '';
         }
     }
@@ -243,27 +306,156 @@ document.addEventListener('DOMContentLoaded', () => {
     [el.inputUsername, el.inputPassword].forEach(inp => {
         if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
     });
+    if (el.inputUsername) el.inputUsername.addEventListener('input', clearLoginError);
+    if (el.inputPassword)  el.inputPassword.addEventListener('input', clearLoginError);
 
-    // ─────────────────────────────────────────────────────────────
-    // LOGOUT (로그아웃: 첫 화면으로)
-    // ─────────────────────────────────────────────────────────────
-    if (el.btnLogout) {
-        el.btnLogout.addEventListener('click', () => {
-            state.currentUser.isLoggedIn = false;
-            localStorage.removeItem('yls_user_logged_in');
-            localStorage.removeItem('yls_user_name');
-            localStorage.removeItem('yls_last_view');
-            clearInterval(state.countdownInterval);
-            state.countdownInterval = null;
-            state.countdownRemaining = 0;
-            if (el.displayMin) el.displayMin.textContent = '--';
-            if (el.displaySec) el.displaySec.textContent = '--';
-            if (el.inputUsername) el.inputUsername.value = '';
-            if (el.inputPassword) el.inputPassword.value = '';
-            navigateTo('login');
-        });
+    // ────────────────────────────────────────────────────────────
+    // ADD USER (사용자 추가)
+    // ────────────────────────────────────────────────────────────
+    function showAddUserError(msg) {
+        if (!el.addUserError) { showToast(msg); return; }
+        el.addUserError.textContent = msg;
+        el.addUserError.classList.remove('hidden');
     }
+    function openAddUserPopup() {
+        if (!el.addUserPopup) return;
+        if (el.inputNewUsername) el.inputNewUsername.value = '';
+        if (el.inputNewPassword) el.inputNewPassword.value = '';
+        if (el.inputNewPasswordConfirm) el.inputNewPasswordConfirm.value = '';
+        if (el.addUserError) el.addUserError.classList.add('hidden');
+        el.addUserPopup.classList.remove('hidden');
+        setTimeout(() => el.inputNewUsername?.focus(), 50);
+    }
+    function closeAddUserPopup() {
+        if (!el.addUserPopup) return;
+        el.addUserPopup.classList.add('hidden');
+    }
+    function confirmAddUser() {
+        const id  = (el.inputNewUsername?.value || '').trim();
+        const pw  = el.inputNewPassword?.value || '';
+        const pw2 = el.inputNewPasswordConfirm?.value || '';
 
+        if (!USERNAME_REGEX.test(id)) {
+            showAddUserError('User_ID는 영문 또는 언더스코어(_) 1~8자만 가능합니다.');
+            return;
+        }
+        if (pw.length < MIN_PASSWORD_LEN) {
+            showAddUserError('Password는 최소 ' + MIN_PASSWORD_LEN + '자 이상이어야 합니다.');
+            return;
+        }
+        if (pw !== pw2) {
+            showAddUserError('Password 확인이 일치하지 않습니다.');
+            return;
+        }
+        if (state.users.some(u => u.username === id)) {
+            showAddUserError('이미 등록된 User_ID 입니다.');
+            return;
+        }
+
+        state.users.push({ username: id, password: pw });
+        saveUsers(state.users);
+        closeAddUserPopup();
+        showToast(`사용자 '${id}' 가 등록되었습니다.`);
+        if (el.inputUsername) el.inputUsername.value = id;
+        if (el.inputPassword)  { el.inputPassword.value = ''; el.inputPassword.focus(); }
+    }
+    if (el.btnOpenAddUser) el.btnOpenAddUser.addEventListener('click', openAddUserPopup);
+    if (el.btnAddUserClose) el.btnAddUserClose.addEventListener('click', closeAddUserPopup);
+    if (el.btnAddUserCancel) el.btnAddUserCancel.addEventListener('click', closeAddUserPopup);
+    if (el.btnAddUserConfirm) el.btnAddUserConfirm.addEventListener('click', confirmAddUser);
+    [el.inputNewUsername, el.inputNewPassword, el.inputNewPasswordConfirm].forEach(inp => {
+        if (inp) inp.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && el.btnAddUserConfirm) el.btnAddUserConfirm.click();
+        });
+    });
+    if (el.addUserPopup) el.addUserPopup.addEventListener('click', e => {
+        if (e.target === el.addUserPopup) closeAddUserPopup();
+    });
+
+    // ────────────────────────────────────────────────────────────
+    // USER SETTINGS (톱니바퀴 -> 설정)
+    //   a) 현재 user_ID (읽기 전용)
+    //   b) Password 변경 (현재 PW 검증 후)
+    //   c) Logout
+    // ────────────────────────────────────────────────────────────
+    function openUserSettings() {
+        if (!el.userSettingsPopup) return;
+        if (el.currentUserIdDisplay) {
+            el.currentUserIdDisplay.textContent = state.currentUser.username;
+        }
+        if (el.inputCurrentPassword) el.inputCurrentPassword.value = '';
+        if (el.inputNewPassword2) el.inputNewPassword2.value = '';
+        if (el.inputNewPasswordConfirm2) el.inputNewPasswordConfirm2.value = '';
+        if (el.userSettingsError) el.userSettingsError.classList.add('hidden');
+        if (el.userSettingsSuccess) el.userSettingsSuccess.classList.add('hidden');
+        el.userSettingsPopup.classList.remove('hidden');
+    }
+    function closeUserSettings() {
+        if (!el.userSettingsPopup) return;
+        el.userSettingsPopup.classList.add('hidden');
+    }
+    function showSettingsError(msg) {
+        if (!el.userSettingsError) { showToast(msg); return; }
+        el.userSettingsError.textContent = msg;
+        el.userSettingsError.classList.remove('hidden');
+        if (el.userSettingsSuccess) el.userSettingsSuccess.classList.add('hidden');
+    }
+    function savePasswordChange() {
+        const cur   = el.inputCurrentPassword?.value || '';
+        const newPw = el.inputNewPassword2?.value || '';
+        const newPw2 = el.inputNewPasswordConfirm2?.value || '';
+        const me = state.users.find(u => u.username === state.currentUser.username);
+
+        if (!me) { showSettingsError('현재 사용자 정보를 찾을 수 없습니다.'); return; }
+        if (cur !== me.password) { showSettingsError('현재 Password가 일치하지 않습니다.'); return; }
+        if (newPw.length < MIN_PASSWORD_LEN) {
+            showSettingsError('새 Password는 최소 ' + MIN_PASSWORD_LEN + '자 이상이어야 합니다.');
+            return;
+        }
+        if (newPw !== newPw2) { showSettingsError('새 Password 확인이 일치하지 않습니다.'); return; }
+
+        me.password = newPw;
+        saveUsers(state.users);
+        if (el.inputCurrentPassword) el.inputCurrentPassword.value = '';
+        if (el.inputNewPassword2) el.inputNewPassword2.value = '';
+        if (el.inputNewPasswordConfirm2) el.inputNewPasswordConfirm2.value = '';
+        if (el.userSettingsError) el.userSettingsError.classList.add('hidden');
+        if (el.userSettingsSuccess) {
+            el.userSettingsSuccess.textContent = 'Password가 변경되었습니다.';
+            el.userSettingsSuccess.classList.remove('hidden');
+        }
+        showToast('Password가 변경되었습니다.');
+    }
+    // LOGOUT (설정 팝업 안 버튼에서 호출)
+    function doLogout() {
+        state.currentUser.isLoggedIn = false;
+        localStorage.removeItem('yls_user_logged_in');
+        localStorage.removeItem('yls_user_name');
+        localStorage.removeItem('yls_last_view');
+        clearInterval(state.countdownInterval);
+        state.countdownInterval = null;
+        state.countdownRemaining = 0;
+        if (el.displayMin) el.displayMin.textContent = '--';
+        if (el.displaySec) el.displaySec.textContent = '--';
+        if (el.inputUsername) el.inputUsername.value = '';
+        if (el.inputPassword) el.inputPassword.value = '';
+        clearLoginError();
+        if (el.userSettingsPopup) el.userSettingsPopup.classList.add('hidden');
+        navigateTo('login');
+    }
+    if (el.btnSettingsMenu)        el.btnSettingsMenu.addEventListener('click', openUserSettings);
+    if (el.btnUserSettingsClose)   el.btnUserSettingsClose.addEventListener('click', closeUserSettings);
+    if (el.btnUserSettingsCancel)  el.btnUserSettingsCancel.addEventListener('click', closeUserSettings);
+    if (el.btnUserSettingsSave)    el.btnUserSettingsSave.addEventListener('click', savePasswordChange);
+    if (el.btnUserSettingsLogout)  el.btnUserSettingsLogout.addEventListener('click', doLogout);
+    if (el.userSettingsPopup) el.userSettingsPopup.addEventListener('click', e => {
+        if (e.target === el.userSettingsPopup) closeUserSettings();
+    });
+    [el.inputCurrentPassword, el.inputNewPassword2, el.inputNewPasswordConfirm2].forEach(inp => {
+        if (inp) inp.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && el.btnUserSettingsSave) el.btnUserSettingsSave.click();
+        });
+    });
     // ─────────────────────────────────────────────────────────────
     // 지난 결과 보기 (검사결과 화면으로 & 구글 시트 실시간 동기화)
     // ─────────────────────────────────────────────────────────────
