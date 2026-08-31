@@ -196,9 +196,15 @@ function doGet(e) {
       var results = [];
 
       if (lastRow > 1) {
-        // 헤더 제외 2행부터 전체 데이터 읽기 (1~9열)
-        var rangeData = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
+        var range = sheet.getRange(2, 1, lastRow - 1, 9);
+        var rangeData = range.getValues();
         var rangeFormulas = sheet.getRange(2, 9, lastRow - 1, 1).getFormulas();
+        var rangeRichText = sheet.getRange(2, 9, lastRow - 1, 1).getRichTextValues(); // RichText 링크 추출
+
+        var folder = null;
+        try {
+          if (DRIVE_FOLDER_ID) folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+        } catch (_) {}
 
         for (var i = 0; i < rangeData.length; i++) {
           var row = rangeData[i];
@@ -212,6 +218,7 @@ function doGet(e) {
           var memoStr   = String(row[7] || "").trim();
           var cropVal   = String(row[8] || "").trim();
           var cropForm  = String((rangeFormulas[i] && rangeFormulas[i][0]) || "").trim();
+          var richText  = rangeRichText[i] && rangeRichText[i][0];
 
           // 특정 userId 필터링 (파라미터가 있는 경우)
           if (targetUser && userId && userId !== targetUser) {
@@ -237,13 +244,19 @@ function doGet(e) {
             concStr = (valRaw !== "" && valRaw !== null && valRaw !== undefined && valRaw !== "-") ? String(valRaw) : "0.01";
           }
 
-          // 이미지 URL, File ID 및 파일명 추출 (다양한 수식 및 텍스트 패턴 지원)
+          // ── 이미지 URL 및 Drive File ID 다중 추출 ──
           var cropUrl = "";
           var driveFileId = "";
           var cropName = cropVal;
 
-          // 1) 수식에서 추출 시도: =HYPERLINK("URL", "FILENAME")
-          if (cropForm) {
+          // 1) RichText 셀 링크 추출 (가장 최신 Google Sheets 링크 포맷)
+          if (richText) {
+            var rtLink = richText.getLinkUrl();
+            if (rtLink) cropUrl = rtLink;
+          }
+
+          // 2) 수식에서 추출: =HYPERLINK("URL", "FILENAME")
+          if (!cropUrl && cropForm) {
             var m1 = cropForm.match(/HYPERLINK\s*\(\s*["']([^"']+)["']\s*(?:,\s*["']([^"']+)["'])?\s*\)/i);
             if (m1) {
               cropUrl = m1[1];
@@ -251,25 +264,29 @@ function doGet(e) {
             }
           }
 
-          // 2) 텍스트 값에서 URL 추출
+          // 3) 텍스트 값 자체에 URL이 있는 경우
           if (!cropUrl && cropVal.indexOf("http") > -1) {
             cropUrl = cropVal;
           }
 
-          // 3) 파일 ID 추출 (/d/FILE_ID 또는 id=FILE_ID)
+          // 4) URL에서 file ID 추출
           if (cropUrl) {
             var idMatch = cropUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || 
                           cropUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
                           cropUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-            if (idMatch) {
-              driveFileId = idMatch[1];
-            }
+            if (idMatch) driveFileId = idMatch[1];
           }
 
-          // 4) 만약 cropVal 자체가 파일 ID인 경우
-          if (!driveFileId && cropVal.length > 25 && cropVal.indexOf(" ") === -1 && cropVal.indexOf(".") === -1) {
-            driveFileId = cropVal;
-            cropUrl = "https://drive.google.com/file/d/" + driveFileId + "/view";
+          // 5) [중요] 드라이브 폴더에서 파일명으로 직접 파일 검색 (Fallback)
+          if (!driveFileId && folder && cropName && cropName.indexOf(".jpg") > -1) {
+            try {
+              var files = folder.getFilesByName(cropName);
+              if (files.hasNext()) {
+                var f = files.next();
+                driveFileId = f.getId();
+                cropUrl = f.getUrl();
+              }
+            } catch (_) {}
           }
 
           results.push({
@@ -312,7 +329,7 @@ function doGet(e) {
   // 3. 기본 상태 응답
   return ContentService.createTextOutput(JSON.stringify({
     status: "online",
-    message: "YLS LFA Kit API v4.4.1 is running",
+    message: "YLS LFA Kit API v4.4.2 is running",
     driveFolderId: DRIVE_FOLDER_ID,
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);

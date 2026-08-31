@@ -974,6 +974,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─────────────────────────────────────────────────────────────
     function showGraphPopup(record) {
         if (el.graphPopup) el.graphPopup.classList.remove('hidden');
+        console.log('[DEBUG] showGraphPopup opened for record:', record);
 
         // ── Header Result Badge ('검사결과 : xx') ──
         if (el.graphPopupResult) {
