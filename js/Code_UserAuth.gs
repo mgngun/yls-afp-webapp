@@ -12,7 +12,7 @@
  * 3) 배포된 /exec URL을 google_user_auth.js의 USER_AUTH_SCRIPT_URL에 입력
  */
 
-const SPREADSHEET_ID = '1qWB-bRKz-LLgx909dDsm9gbzdHj-ACbVroJXK5BZxhM';
+const SPREADSHEET_ID = 'https://docs.google.com/spreadsheets/d/1qWB-bRKz-LLgx909dDsm9gbzdHj-ACbVroJXK5BZxhM/edit?gid=0#gid=0';
 const USERS_SHEET_NAME = 'Users';
 
 function doGet(e) {
@@ -51,12 +51,25 @@ function doGet(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function getUsersSheet_() {
-  if (!SPREADSHEET_ID || SPREADSHEET_ID.indexOf('PASTE_YOUR_') === 0) {
+function normalizeSpreadsheetId_(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw.indexOf('PASTE_YOUR_') === 0) {
     throw new Error('SPREADSHEET_ID를 설정하세요.');
   }
 
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  // ID만 입력한 경우
+  if (/^[A-Za-z0-9_-]{20,}$/.test(raw)) return raw;
+
+  // Google Sheets 전체 URL을 입력한 경우도 자동으로 ID만 추출
+  const match = raw.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]+)/);
+  if (match && match[1]) return match[1];
+
+  throw new Error('올바른 Google Spreadsheet ID 또는 Google Sheets URL이 아닙니다.');
+}
+
+function getUsersSheet_() {
+  const spreadsheetId = normalizeSpreadsheetId_(SPREADSHEET_ID);
+  const ss = SpreadsheetApp.openById(spreadsheetId);
   let sheet = ss.getSheetByName(USERS_SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(USERS_SHEET_NAME);
