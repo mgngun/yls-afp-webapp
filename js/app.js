@@ -1002,26 +1002,45 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.textAlign = 'center';
             ctx.fillText('로딩 중...', 36, 95);
 
+            // 파일 ID 자동 추출 (fileId 필드가 없더라도 cropUrl에서 파싱)
+            let targetFileId = record.driveFileId;
+            if (!targetFileId && record.cropUrl) {
+                const idM = record.cropUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || 
+                            record.cropUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
+                            record.cropUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+                if (idM) targetFileId = idM[1];
+            }
+
             // 1. 이미 Base64 데이터가 로컬에 있는 경우
             if (record.cropImageDataUrl && record.cropImageDataUrl.startsWith('data:image/')) {
                 renderStripAndAnalyze(record.cropImageDataUrl);
             } 
-            // 2. 구글 드라이브 파일 ID가 있는 경우 (GAS 프록시로 Base64 조회)
-            else if (record.driveFileId && state.sheetsSync) {
-                state.sheetsSync.fetchDriveImageBase64(record.driveFileId).then(b64 => {
-                    if (b64) {
-                        record.cropImageDataUrl = b64;
-                        renderStripAndAnalyze(b64);
-                    } else {
-                        showImagePlaceholder('이미지 로드 실패');
-                    }
-                }).catch(() => showImagePlaceholder('이미지 오류'));
+            // 2. 구글 드라이브 파일 ID가 있는 경우 (GAS 프록시로 Base64 조회 시도 후 실패 시 직접 URL 시도)
+            else if (targetFileId) {
+                if (state.sheetsSync) {
+                    state.sheetsSync.fetchDriveImageBase64(targetFileId).then(b64 => {
+                        if (b64) {
+                            record.cropImageDataUrl = b64;
+                            renderStripAndAnalyze(b64);
+                        } else {
+                            // GAS 프록시 실패 시 구글 썸네일 직접 URL로 2차 시도
+                            tryDirectThumbnail(targetFileId);
+                        }
+                    }).catch(() => tryDirectThumbnail(targetFileId));
+                } else {
+                    tryDirectThumbnail(targetFileId);
+                }
             }
             // 3. 일반 이미지 URL인 경우
             else if (record.cropUrl) {
                 renderStripAndAnalyze(record.cropUrl);
             } else {
                 showImagePlaceholder('이미지 없음');
+            }
+
+            function tryDirectThumbnail(fId) {
+                const thumbUrl = `https://drive.google.com/thumbnail?id=${fId}&sz=w1000`;
+                renderStripAndAnalyze(thumbUrl);
             }
 
             function renderStripAndAnalyze(imgSrc) {

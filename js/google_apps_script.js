@@ -237,24 +237,39 @@ function doGet(e) {
             concStr = (valRaw !== "" && valRaw !== null && valRaw !== undefined && valRaw !== "-") ? String(valRaw) : "0.01";
           }
 
-          // 이미지 URL, File ID 및 파일명 추출
+          // 이미지 URL, File ID 및 파일명 추출 (다양한 수식 및 텍스트 패턴 지원)
           var cropUrl = "";
           var driveFileId = "";
           var cropName = cropVal;
 
-          if (cropForm && cropForm.indexOf("HYPERLINK") > -1) {
-            var match = cropForm.match(/HYPERLINK\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']\s*\)/i);
-            if (match) {
-              cropUrl = match[1];
-              cropName = match[2];
+          // 1) 수식에서 추출 시도: =HYPERLINK("URL", "FILENAME")
+          if (cropForm) {
+            var m1 = cropForm.match(/HYPERLINK\s*\(\s*["']([^"']+)["']\s*(?:,\s*["']([^"']+)["'])?\s*\)/i);
+            if (m1) {
+              cropUrl = m1[1];
+              if (m1[2]) cropName = m1[2];
             }
-          } else if (cropVal.indexOf("http") === 0) {
+          }
+
+          // 2) 텍스트 값에서 URL 추출
+          if (!cropUrl && cropVal.indexOf("http") > -1) {
             cropUrl = cropVal;
           }
 
+          // 3) 파일 ID 추출 (/d/FILE_ID 또는 id=FILE_ID)
           if (cropUrl) {
-            var idMatch = cropUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || cropUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-            if (idMatch) driveFileId = idMatch[1];
+            var idMatch = cropUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || 
+                          cropUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
+                          cropUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+            if (idMatch) {
+              driveFileId = idMatch[1];
+            }
+          }
+
+          // 4) 만약 cropVal 자체가 파일 ID인 경우
+          if (!driveFileId && cropVal.length > 25 && cropVal.indexOf(" ") === -1 && cropVal.indexOf(".") === -1) {
+            driveFileId = cropVal;
+            cropUrl = "https://drive.google.com/file/d/" + driveFileId + "/view";
           }
 
           results.push({
@@ -269,10 +284,10 @@ function doGet(e) {
             concentrationStr: concStr,
             error: errStr,
             memo: memoStr,
-            cropImageDataUrl: null, // 프론트엔드에서 fileId로 필요할 때 즉시 로드
+            cropImageDataUrl: null,
             cropUrl: cropUrl || null,
             driveFileId: driveFileId || null,
-            cropFilename: cropName || null
+            cropFilename: cropName || (userId + "_" + tsFormatted.replace(/[- :]/g, "") + ".jpg")
           });
         }
       }
