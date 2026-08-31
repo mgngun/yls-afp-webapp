@@ -13,27 +13,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─────────────────────────────────────────────────────────────
     const PAGE_SIZE = 15;
 
-    // 기존 단일 계정 yelloi/1111 시드 (최초 실행 시에만 자동 등록)
+    // 사용자 계정은 Google Sheets + Apps Script에서 중앙 관리한다.
+    // 개발 단계에서는 Password도 시트에 저장하지만, 실제 서비스 전환 시에는
+    // 서버 측 해시 저장(Argon2/bcrypt 등)으로 변경해야 한다.
     const DEFAULT_USERS = [{ username: 'yelloi', password: '1111' }];
     const USERNAME_REGEX = /^[A-Za-z_]{1,8}$/;
     const MIN_PASSWORD_LEN = 4;
-    const USERS_DB_KEY = 'yls_users_db';
 
-    function loadUsers() {
-        try {
-            const raw = localStorage.getItem(USERS_DB_KEY);
-            if (raw) {
-                const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-            }
-        } catch (e) { /* fall through */ }
-        // 최초 실행 또는 손상된 경우 -> 시드 계정으로 초기화
-        localStorage.setItem(USERS_DB_KEY, JSON.stringify(DEFAULT_USERS));
-        return DEFAULT_USERS.slice();
-    }
-    function saveUsers(users) {
-        localStorage.setItem(USERS_DB_KEY, JSON.stringify(users));
-    }
+    // 기존 로그인 상태/검사 이력 캐시는 localStorage를 사용할 수 있지만
+    // 사용자 계정 자체는 절대로 localStorage에서 읽지 않는다.
+    function loadUsers() { return []; }
+    function saveUsers(_) { /* Google Sheets가 원본 DB이므로 no-op */ }
 
     const state = {
         currentUser: {
@@ -278,27 +268,33 @@ document.addEventListener('DOMContentLoaded', () => {
         el.loginError.classList.add('hidden');
     }
 
-    function doLogin() {
+    async function doLogin() {
         const username = (el.inputUsername?.value || '').trim();
         const password = (el.inputPassword?.value || '').trim();
 
-        const match = state.users.find(
-            u => u.username === username && u.password === password
-        );
+        if (!username || !password) {
+            showLoginError('User_ID와 Password를 입력해 주세요.');
+            return;
+        }
 
-        if (match) {
-            state.currentUser.username = username;
-            state.currentUser.isLoggedIn = true;
-            localStorage.setItem('yls_user_logged_in', 'true');
-            localStorage.setItem('yls_user_name', username);
-            clearLoginError();
-            if (el.inputPassword) el.inputPassword.value = '';
-            navigateTo('timesetting');
-            // 구글 시트에서 전체 기록 백그라운드 동기화
-            loadAndRenderResultsTable();
-        } else {
-            showLoginError('아이디 또는 비밀번호가 올바르지 않거나 등록되지 않은 사용자입니다.');
-            if (el.inputPassword) el.inputPassword.value = '';
+        try {
+            const res = await GoogleUserAuth.login(username, password);
+            if (res && res.success) {
+                state.currentUser.username = username;
+                state.currentUser.isLoggedIn = true;
+                localStorage.setItem('yls_user_logged_in', 'true');
+                localStorage.setItem('yls_user_name', username);
+                clearLoginError();
+                if (el.inputPassword) el.inputPassword.value = '';
+                navigateTo('timesetting');
+                loadAndRenderResultsTable();
+            } else {
+                showLoginError((res && res.message) || '아이디 또는 비밀번호가 올바르지 않습니다.');
+                if (el.inputPassword) el.inputPassword.value = '';
+            }
+        } catch (err) {
+            console.error('[GoogleUserAuth] login failed:', err);
+            showLoginError('사용자 서버에 연결할 수 없습니다. 인터넷 연결과 Google Sheets 연동 설정을 확인해 주세요.');
         }
     }
 
@@ -330,7 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!el.addUserPopup) return;
         el.addUserPopup.classList.add('hidden');
     }
-    function confirmAddUser() {
+    async function confirmAddUser() {
         const id  = (el.inputNewUsername?.value || '').trim();
         const pw  = el.inputNewPassword?.value || '';
         const pw2 = el.inputNewPasswordConfirm?.value || '';
@@ -347,17 +343,21 @@ document.addEventListener('DOMContentLoaded', () => {
             showAddUserError('Password 확인이 일치하지 않습니다.');
             return;
         }
-        if (state.users.some(u => u.username === id)) {
-            showAddUserError('이미 등록된 User_ID 입니다.');
-            return;
-        }
+        try {
+            const res = await GoogleUserAuth.register(id, pw);
+            if (!res || !res.success) {
+                showAddUserError((res && res.message) || '사용자 등록에 실패했습니다.');
+                return;
+            }
 
-        state.users.push({ username: id, password: pw });
-        saveUsers(state.users);
-        closeAddUserPopup();
-        showToast(`사용자 '${id}' 가 등록되었습니다.`);
-        if (el.inputUsername) el.inputUsername.value = id;
-        if (el.inputPassword)  { el.inputPassword.value = ''; el.inputPassword.focus(); }
+            closeAddUserPopup();
+            showToast(`사용자 '${id}' 가 등록되었습니다.`);
+            if (el.inputUsername) el.inputUsername.value = id;
+            if (el.inputPassword)  { el.inputPassword.value = ''; el.inputPassword.focus(); }
+        } catch (err) {
+            console.error('[GoogleUserAuth] register failed:', err);
+            showAddUserError('사용자 서버에 연결할 수 없습니다. 인터넷 연결을 확인해 주세요.');
+        }
     }
     if (el.btnOpenAddUser) el.btnOpenAddUser.addEventListener('click', openAddUserPopup);
     if (el.btnAddUserClose) el.btnAddUserClose.addEventListener('click', closeAddUserPopup);
@@ -400,22 +400,27 @@ document.addEventListener('DOMContentLoaded', () => {
         el.userSettingsError.classList.remove('hidden');
         if (el.userSettingsSuccess) el.userSettingsSuccess.classList.add('hidden');
     }
-    function savePasswordChange() {
+    async function savePasswordChange() {
         const cur   = el.inputCurrentPassword?.value || '';
         const newPw = el.inputNewPassword2?.value || '';
         const newPw2 = el.inputNewPasswordConfirm2?.value || '';
-        const me = state.users.find(u => u.username === state.currentUser.username);
-
-        if (!me) { showSettingsError('현재 사용자 정보를 찾을 수 없습니다.'); return; }
-        if (cur !== me.password) { showSettingsError('현재 Password가 일치하지 않습니다.'); return; }
         if (newPw.length < MIN_PASSWORD_LEN) {
             showSettingsError('새 Password는 최소 ' + MIN_PASSWORD_LEN + '자 이상이어야 합니다.');
             return;
         }
         if (newPw !== newPw2) { showSettingsError('새 Password 확인이 일치하지 않습니다.'); return; }
 
-        me.password = newPw;
-        saveUsers(state.users);
+        try {
+            const res = await GoogleUserAuth.changePassword(state.currentUser.username, cur, newPw);
+            if (!res || !res.success) {
+                showSettingsError((res && res.message) || 'Password 변경에 실패했습니다.');
+                return;
+            }
+        } catch (err) {
+            console.error('[GoogleUserAuth] password change failed:', err);
+            showSettingsError('사용자 서버에 연결할 수 없습니다.');
+            return;
+        }
         if (el.inputCurrentPassword) el.inputCurrentPassword.value = '';
         if (el.inputNewPassword2) el.inputNewPassword2.value = '';
         if (el.inputNewPasswordConfirm2) el.inputNewPasswordConfirm2.value = '';
