@@ -227,6 +227,8 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('yls_user_logged_in', 'true');
             localStorage.setItem('yls_user_name', username);
             navigateTo('timesetting');
+            // 구글 시트에서 전체 기록 백그라운드 동기화
+            loadAndRenderResultsTable();
         } else {
             showToast('아이디 또는 비밀번호가 올바르지 않습니다.');
             if (el.inputPassword) el.inputPassword.value = '';
@@ -258,11 +260,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 지난 결과 보기 (검사결과 화면으로)
+    // 지난 결과 보기 (검사결과 화면으로 & 구글 시트 실시간 동기화)
     // ─────────────────────────────────────────────────────────────
     if (el.btnViewResults) {
         el.btnViewResults.addEventListener('click', () => {
             navigateTo('results');
+            loadAndRenderResultsTable();
         });
     }
 
@@ -741,9 +744,52 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         history.unshift(record);
-        if (history.length > 50) history.pop();
+        if (history.length > 100) history.pop();
         localStorage.setItem('yls_lfa_history', JSON.stringify(history));
         return record;
+    }
+
+    /**
+     * 구글 드라이브 URL 또는 일반 URL을 브라우저 렌더링용 이미지 URL로 변환
+     */
+    function resolveImageUrl(url) {
+        if (!url) return null;
+        if (url.startsWith('data:image/')) return url;
+
+        // Google Drive 링크 형식 (file/d/ID 또는 id=ID)
+        let fileId = null;
+        const match1 = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        if (match1) fileId = match1[1];
+        const match2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        if (match2) fileId = match2[1];
+
+        if (fileId) {
+            // 구글 드라이브 고화질 썸네일/뷰어 URL
+            return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
+        }
+        return url;
+    }
+
+    /**
+     * 구글 시트로부터 최신 검사 기록 전체를 실시간으로 불러와 테이블 갱신
+     */
+    async function loadAndRenderResultsTable() {
+        // 1. 기존 로컬 캐시 먼저 즉시 표시 (사용자 체감 지연 0)
+        renderResultsTable();
+
+        // 2. 구글 시트에서 전체 기록 가져오기
+        if (state.sheetsSync && typeof state.sheetsSync.fetchResults === 'function') {
+            try {
+                const res = await state.sheetsSync.fetchResults(state.currentUser.username);
+                if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+                    // 구글 시트의 전체 최신 목록으로 로컬 스토리지 동기화
+                    localStorage.setItem('yls_lfa_history', JSON.stringify(res.data));
+                    renderResultsTable();
+                }
+            } catch (err) {
+                console.warn('Failed to fetch latest records from Google Sheets:', err);
+            }
+        }
     }
 
     // ── Render paginated results table ──
@@ -779,7 +825,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 cls = 'col-fail'; label = '실패';
             }
 
-            const hasMemo = !!(rec.memo && rec.memo.trim());
+            const hasMemo = !!(rec.memo && String(rec.memo).trim());
             const memoLabel = hasMemo ? '보기' : '';
 
             tr.innerHTML = `
@@ -946,14 +992,54 @@ document.addEventListener('DOMContentLoaded', () => {
         // ── Strip image ──
         const sc = el.graphStripCanvas;
         if (sc) {
-            if (record.cropImageDataUrl) {
+            const rawUrl = record.cropImageDataUrl || record.cropUrl;
+            const resolvedUrl = resolveImageUrl(rawUrl);
+
+            if (resolvedUrl) {
                 const img = new Image();
+                img.crossOrigin = 'anonymous';
                 img.onload = () => {
-                    sc.width = img.width;
-                    sc.height = img.height;
-                    sc.getContext('2d').drawImage(img, 0, 0);
+                    sc.width = img.width || 72;
+                    sc.height = img.height || 190;
+                    const sCtx = sc.getContext('2d');
+                    sCtx.clearRect(0, 0, sc.width, sc.height);
+                    sCtx.drawImage(img, 0, 0);
+
+                    // 만약 프로필 데이터가 없는 구글 시트 과거 기록인 경우, 즉시 프로필 계산하여 그래프 렌더링
+                    if (!record.profileData && state.analyzer) {
+                        try {
+                            state.analyzer.analyze(sc, { isPreCropped: true }).then(analysisRes => {
+                                if (analysisRes && analysisRes.visualData) {
+                                    const vd = analysisRes.visualData;
+                                    record.profileData = {
+                                        corrected: Array.from(vd.correctedProfile || []),
+                                        cLineIndex: vd.cLineIndex,
+                                        tLineIndex: vd.tLineIndex,
+                                        cLineDetected: vd.cLineDetected,
+                                        tLineDetected: vd.tLineDetected,
+                                        cLineRange: vd.cLineRange,
+                                        tLineRange: vd.tLineRange
+                                    };
+                                    record.metrics = analysisRes.metrics;
+                                    drawAbsorbanceGraph(record);
+                                }
+                            }).catch(() => {});
+                        } catch (_) {}
+                    }
                 };
-                img.src = record.cropImageDataUrl;
+                img.onerror = () => {
+                    sc.width = 72;
+                    sc.height = 190;
+                    const ctx = sc.getContext('2d');
+                    ctx.fillStyle = '#f1f5f9';
+                    ctx.fillRect(0, 0, 72, 190);
+                    ctx.fillStyle = '#64748b';
+                    ctx.font = '10px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('드라이브', 36, 90);
+                    ctx.fillText('이미지', 36, 104);
+                };
+                img.src = resolvedUrl;
             } else {
                 sc.width = 72;
                 sc.height = 190;

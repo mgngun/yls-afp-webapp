@@ -43,6 +43,39 @@ class GoogleSheetsSync {
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.config));
     }
 
+    /**
+     * 구글 시트로부터 저장된 전체 검사 기록을 최신순으로 가져옵니다.
+     * @param {string} [userId] - 특정 사용자 필터링 (선택)
+     */
+    async fetchResults(userId = '') {
+        const cfg = this.getConfig();
+        if (!cfg.webhookUrl) return { success: false, data: [] };
+
+        const targetUrl = new URL(cfg.webhookUrl);
+        targetUrl.searchParams.set('action', 'fetch');
+        if (userId) targetUrl.searchParams.set('userId', userId);
+        // 캐시 방지용 타임스탬프
+        targetUrl.searchParams.set('_t', Date.now().toString());
+
+        try {
+            const res = await fetch(targetUrl.toString(), {
+                method: 'GET',
+                mode: 'cors'
+            });
+
+            if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+            const json = await res.json();
+
+            if (json && json.status === 'success' && Array.isArray(json.data)) {
+                return { success: true, data: json.data, total: json.total };
+            }
+            return { success: false, data: [], error: json?.message || 'Invalid response format' };
+        } catch (err) {
+            console.warn('Google Sheets fetchResults error:', err);
+            return { success: false, data: [], error: err.message };
+        }
+    }
+
     async syncResult(analysisResult, user = {}, memo = '', cropFilename = '', cropDataUrl = null) {
         if (!analysisResult) return;
         const diag = analysisResult.diagnosis || {};

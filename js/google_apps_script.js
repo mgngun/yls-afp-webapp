@@ -162,9 +162,112 @@ function doPost(e) {
 }
 
 function doGet(e) {
+  var action = (e && e.parameter && e.parameter.action) || "";
+  var targetUser = (e && e.parameter && e.parameter.userId) || "";
+
+  // 1. 전체 기록 조회 (Fetch History)
+  if (action === "fetch" || action === "getHistory") {
+    try {
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+      var lastRow = sheet.getLastRow();
+      var results = [];
+
+      if (lastRow > 1) {
+        // 헤더 제외 2행부터 전체 데이터 읽기 (1~9열)
+        var rangeData = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
+        var rangeFormulas = sheet.getRange(2, 9, lastRow - 1, 1).getFormulas(); // Crop_image 열의 HYPERLINK 수식 읽기
+
+        for (var i = 0; i < rangeData.length; i++) {
+          var row = rangeData[i];
+          var rawTs     = row[0];
+          var userId    = String(row[1] || "").trim();
+          var cLine     = String(row[2] || "").trim();
+          var tLine     = String(row[3] || "").trim();
+          var resultRaw = String(row[4] || "").trim();
+          var valRaw    = row[5];
+          var errStr    = String(row[6] || "").trim();
+          var memoStr   = String(row[7] || "").trim();
+          var cropVal   = String(row[8] || "").trim();
+          var cropForm  = String((rangeFormulas[i] && rangeFormulas[i][0]) || "").trim();
+
+          // 특정 userId 필터링 (파라미터가 있는 경우)
+          if (targetUser && userId && userId !== targetUser) {
+            continue;
+          }
+
+          // 날짜 포맷 표준화
+          var tsFormatted = "";
+          if (rawTs instanceof Date) {
+            tsFormatted = Utilities.formatDate(rawTs, "Asia/Seoul", "yyyy-MM-dd HH:mm");
+          } else {
+            tsFormatted = String(rawTs || "").slice(0, 16);
+          }
+
+          // 결과 한글화 매핑
+          var resultKorean = "실패";
+          if (resultRaw === "positive" || resultRaw === "양성") resultKorean = "양성";
+          else if (resultRaw === "negative" || resultRaw === "음성") resultKorean = "음성";
+
+          // 농도값 문자열
+          var concStr = "-";
+          if (resultKorean === "양성") {
+            concStr = (valRaw !== "" && valRaw !== null && valRaw !== undefined && valRaw !== "-") ? String(valRaw) : "0.01";
+          }
+
+          // 이미지 URL 및 파일명 추출 (수식: =HYPERLINK("URL", "FILENAME") 또는 일반 URL/파일명)
+          var cropUrl = "";
+          var cropName = cropVal;
+
+          if (cropForm && cropForm.indexOf("HYPERLINK") > -1) {
+            var match = cropForm.match(/HYPERLINK\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']\s*\)/i);
+            if (match) {
+              cropUrl = match[1];
+              cropName = match[2];
+            }
+          } else if (cropVal.indexOf("http") === 0) {
+            cropUrl = cropVal;
+          }
+
+          results.push({
+            id: "REC_SHEET_" + (i + 1),
+            rowIndex: i + 2,
+            timestamp: tsFormatted,
+            userNickname: userId,
+            cLine: cLine,
+            tLine: tLine,
+            result: resultKorean,
+            resultEnglish: resultRaw,
+            concentrationStr: concStr,
+            error: errStr,
+            memo: memoStr,
+            cropImageDataUrl: cropUrl || null,
+            cropUrl: cropUrl || null,
+            cropFilename: cropName || null
+          });
+        }
+      }
+
+      // 최신 검사가 맨 위로 오도록 내림차순 정렬 (역순)
+      results.reverse();
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        total: results.length,
+        data: results
+      })).setMimeType(ContentService.MimeType.JSON);
+
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "error",
+        message: err.toString()
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  // 2. 기본 상태 응답
   return ContentService.createTextOutput(JSON.stringify({
     status: "online",
-    message: "YLS LFA Kit API v4.3.2 is running",
+    message: "YLS LFA Kit API v4.4.0 is running",
     driveFolderId: DRIVE_FOLDER_ID,
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);
