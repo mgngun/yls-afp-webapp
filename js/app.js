@@ -172,6 +172,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─────────────────────────────────────────────────────────────
     function navigateTo(viewName) {
         state.activeView = 'view-' + viewName;
+        if (viewName !== 'login') {
+            localStorage.setItem('yls_last_view', viewName);
+        }
+
         Object.entries(el.views).forEach(([name, node]) => {
             if (!node) return;
             node.classList.toggle('active', name === viewName);
@@ -248,6 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.currentUser.isLoggedIn = false;
             localStorage.removeItem('yls_user_logged_in');
             localStorage.removeItem('yls_user_name');
+            localStorage.removeItem('yls_last_view');
             clearInterval(state.countdownInterval);
             state.countdownInterval = null;
             state.countdownRemaining = 0;
@@ -1338,8 +1343,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // App Startup
+    // App Startup (새로고침 시 로그인 상태 및 현재 화면 자동 유지)
     // ─────────────────────────────────────────────────────────────
     if (el.inputPassword) el.inputPassword.value = '';
-    navigateTo('login');
+
+    const isLoggedIn = localStorage.getItem('yls_user_logged_in') === 'true';
+    const savedUsername = localStorage.getItem('yls_user_name') || 'yelloi';
+    let lastView = localStorage.getItem('yls_last_view') || 'timesetting';
+
+    // 카메라/확인 화면에서 새로고침한 경우 안전하게 시간설정 화면으로 복원
+    if (lastView === 'camera' || lastView === 'confirm') {
+        lastView = 'timesetting';
+    }
+
+    if (isLoggedIn) {
+        state.currentUser.username = savedUsername;
+        state.currentUser.isLoggedIn = true;
+        navigateTo(lastView);
+        // 구글 시트 백그라운드 동기화
+        loadAndRenderResultsTable();
+    } else {
+        navigateTo('login');
+    }
 });
