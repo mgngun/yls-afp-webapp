@@ -1,6 +1,6 @@
 /**
  * YLS LFA Kit AI Diagnostic WebApp Controller
- * v4.0 — 1차 개편 시나리오 전면 반영
+ * v4.1 — 실시간 이미지 재분석, 상단 뱃지 갱신 및 구글 시트 동기화 자동 업데이트 반영
  *
  * Flow: Login (yelloi/1111) → Time Setting (countdown) → Camera →
  *       Photo Confirm → Results (15/page, memo, absorbance graph popup)
@@ -14,14 +14,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const PAGE_SIZE = 15;
 
     // 사용자 계정은 Google Sheets + Apps Script에서 중앙 관리한다.
-    // 개발 단계에서는 Password도 시트에 저장하지만, 실제 서비스 전환 시에는
-    // 서버 측 해시 저장(Argon2/bcrypt 등)으로 변경해야 한다.
     const DEFAULT_USERS = [{ username: 'yelloi', password: '1111' }];
     const USERNAME_REGEX = /^[A-Za-z_]{1,8}$/;
     const MIN_PASSWORD_LEN = 4;
 
-    // 기존 로그인 상태/검사 이력 캐시는 localStorage를 사용할 수 있지만
-    // 사용자 계정 자체는 절대로 localStorage에서 읽지 않는다.
     function loadUsers() { return []; }
     function saveUsers(_) { /* Google Sheets가 원본 DB이므로 no-op */ }
 
@@ -229,7 +225,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 el.timesetGreeting.textContent =
                     `'${state.currentUser.username}' 님 환영합니다.`;
             }
-            // Keep countdown display if still running
             if (!state.countdownInterval) {
                 if (el.displayMin) el.displayMin.textContent = '--';
                 if (el.displaySec) el.displaySec.textContent = '--';
@@ -238,7 +233,6 @@ document.addEventListener('DOMContentLoaded', () => {
             state.currentPage = 1;
             renderResultsTable();
         } else if (viewName === 'confirm') {
-            // confirm 화면에 카메라 가이드와 동일한 위치 재적용
             setTimeout(() => {
                 const m = state.guideMetrics;
                 if (!m) return;
@@ -252,10 +246,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-
-    // ─────────────────────────────────────────────────────────────
     // ────────────────────────────────────────────────────────────
-    // LOGIN (다중 사용자 DB 매칭)
+    // LOGIN
     // ────────────────────────────────────────────────────────────
     function showLoginError(msg) {
         if (!el.loginError) { showToast(msg); return; }
@@ -303,10 +295,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
     });
     if (el.inputUsername) el.inputUsername.addEventListener('input', clearLoginError);
-    if (el.inputPassword)  el.inputPassword.addEventListener('input', clearLoginError);
+    if (el.inputPassword) el.inputPassword.addEventListener('input', clearLoginError);
 
     // ────────────────────────────────────────────────────────────
-    // ADD USER (사용자 추가)
+    // ADD USER
     // ────────────────────────────────────────────────────────────
     function showAddUserError(msg) {
         if (!el.addUserError) { showToast(msg); return; }
@@ -327,8 +319,8 @@ document.addEventListener('DOMContentLoaded', () => {
         el.addUserPopup.classList.add('hidden');
     }
     async function confirmAddUser() {
-        const id  = (el.inputNewUsername?.value || '').trim();
-        const pw  = el.inputNewPassword?.value || '';
+        const id = (el.inputNewUsername?.value || '').trim();
+        const pw = el.inputNewPassword?.value || '';
         const pw2 = el.inputNewPasswordConfirm?.value || '';
 
         if (!USERNAME_REGEX.test(id)) {
@@ -353,7 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
             closeAddUserPopup();
             showToast(`사용자 '${id}' 가 등록되었습니다.`);
             if (el.inputUsername) el.inputUsername.value = id;
-            if (el.inputPassword)  { el.inputPassword.value = ''; el.inputPassword.focus(); }
+            if (el.inputPassword) { el.inputPassword.value = ''; el.inputPassword.focus(); }
         } catch (err) {
             console.error('[GoogleUserAuth] register failed:', err);
             showAddUserError('사용자 서버에 연결할 수 없습니다. 인터넷 연결을 확인해 주세요.');
@@ -373,10 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ────────────────────────────────────────────────────────────
-    // USER SETTINGS (톱니바퀴 -> 설정)
-    //   a) 현재 user_ID (읽기 전용)
-    //   b) Password 변경 (현재 PW 검증 후)
-    //   c) Logout
+    // USER SETTINGS
     // ────────────────────────────────────────────────────────────
     function openUserSettings() {
         if (!el.userSettingsPopup) return;
@@ -401,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el.userSettingsSuccess) el.userSettingsSuccess.classList.add('hidden');
     }
     async function savePasswordChange() {
-        const cur   = el.inputCurrentPassword?.value || '';
+        const cur = el.inputCurrentPassword?.value || '';
         const newPw = el.inputNewPassword2?.value || '';
         const newPw2 = el.inputNewPasswordConfirm2?.value || '';
         if (newPw.length < MIN_PASSWORD_LEN) {
@@ -431,7 +420,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         showToast('Password가 변경되었습니다.');
     }
-    // LOGOUT (설정 팝업 안 버튼에서 호출)
     function doLogout() {
         state.currentUser.isLoggedIn = false;
         localStorage.removeItem('yls_user_logged_in');
@@ -448,11 +436,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el.userSettingsPopup) el.userSettingsPopup.classList.add('hidden');
         navigateTo('login');
     }
-    if (el.btnSettingsMenu)        el.btnSettingsMenu.addEventListener('click', openUserSettings);
-    if (el.btnUserSettingsClose)   el.btnUserSettingsClose.addEventListener('click', closeUserSettings);
-    if (el.btnUserSettingsCancel)  el.btnUserSettingsCancel.addEventListener('click', closeUserSettings);
-    if (el.btnUserSettingsSave)    el.btnUserSettingsSave.addEventListener('click', savePasswordChange);
-    if (el.btnUserSettingsLogout)  el.btnUserSettingsLogout.addEventListener('click', doLogout);
+    if (el.btnSettingsMenu) el.btnSettingsMenu.addEventListener('click', openUserSettings);
+    if (el.btnUserSettingsClose) el.btnUserSettingsClose.addEventListener('click', closeUserSettings);
+    if (el.btnUserSettingsCancel) el.btnUserSettingsCancel.addEventListener('click', closeUserSettings);
+    if (el.btnUserSettingsSave) el.btnUserSettingsSave.addEventListener('click', savePasswordChange);
+    if (el.btnUserSettingsLogout) el.btnUserSettingsLogout.addEventListener('click', doLogout);
     if (el.userSettingsPopup) el.userSettingsPopup.addEventListener('click', e => {
         if (e.target === el.userSettingsPopup) closeUserSettings();
     });
@@ -461,9 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.key === 'Enter' && el.btnUserSettingsSave) el.btnUserSettingsSave.click();
         });
     });
-    // ─────────────────────────────────────────────────────────────
-    // 지난 결과 보기 (검사결과 화면으로 & 구글 시트 실시간 동기화)
-    // ─────────────────────────────────────────────────────────────
+
     if (el.btnViewResults) {
         el.btnViewResults.addEventListener('click', () => {
             navigateTo('results');
@@ -485,7 +471,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.countdownRemaining <= 0) {
                 clearInterval(state.countdownInterval);
                 state.countdownInterval = null;
-                // Auto-navigate only if still on timesetting
                 if (state.activeView === 'view-timesetting') {
                     navigateTo('camera');
                 }
@@ -520,7 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // CAMERA (1x 일반 메인 카메라 자동 선택)
+    // CAMERA
     // ─────────────────────────────────────────────────────────────
     async function getBestMainCameraDeviceId() {
         try {
@@ -529,7 +514,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const videoDevices = devices.filter(d => d.kind === 'videoinput');
             if (videoDevices.length <= 1) return null;
 
-            // 후면 카메라 필터링
             const backCameras = videoDevices.filter(d => {
                 const label = (d.label || '').toLowerCase();
                 return label.includes('back') || label.includes('rear') || label.includes('environment') || label.includes('후면');
@@ -537,7 +521,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const candidateList = backCameras.length > 0 ? backCameras : videoDevices;
 
-            // 초광각(0.5x, 0.6x, ultra-wide)을 피하고 1x 메인 카메라 우선 순위 점수 매기기
             let bestDevice = null;
             let bestScore = -999;
 
@@ -545,27 +528,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 const label = (dev.label || '').toLowerCase();
                 let score = 0;
 
-                // 감점: 초광각, 광각 0.5x, 매크로
                 if (label.includes('ultra') || label.includes('0.5') || label.includes('0.6') || label.includes('super wide')) {
                     score -= 50;
                 }
                 if (label.includes('macro') || label.includes('depth')) {
                     score -= 30;
                 }
-                // 감점: 망원(Telephoto)
                 if (label.includes('tele') || label.includes('zoom') || label.includes('3x') || label.includes('5x') || label.includes('10x')) {
                     score -= 20;
                 }
 
-                // 가산점: 메인 1x 표준 카메라
                 if (label.includes('main') || label.includes('primary') || label.includes('standard') || label.includes('1x') || label.includes('기본')) {
                     score += 50;
                 }
                 if (label.includes('wide') && !label.includes('ultra') && !label.includes('super')) {
-                    score += 20; // 일반 광각(1x 표준)
+                    score += 20;
                 }
                 if (label.includes('camera 0') || label.includes('camera2 0') || label.includes('0, facing back')) {
-                    score += 15; // 첫번째 메인 센서
+                    score += 15;
                 }
 
                 if (score > bestScore) {
@@ -585,10 +565,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             stopCamera();
 
-            // 1단계: 1x 일반 메인 카메라 deviceId 탐색
             let targetDeviceId = await getBestMainCameraDeviceId();
 
-            // 만약 라벨 권한이 없어 deviceId를 못 찾았을 때 최초 권한 획득 시도
             let videoConstraints = {
                 facingMode: { ideal: 'environment' },
                 width: { ideal: 1920, min: 1280 },
@@ -604,7 +582,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
             } catch (deviceErr) {
                 console.warn('Target camera failed, fallback to general environment camera:', deviceErr);
-                // 특정 deviceId 실패 시 기본 후면 카메라로 fallback
                 videoConstraints = {
                     facingMode: { ideal: 'environment' },
                     width: { ideal: 1920, min: 1280 },
@@ -613,7 +590,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
             }
 
-            // 최초 권한 획득 후 만약 처음 탐색 때 라벨이 비어있었다면 재탐색하여 1x 메인 카메라로 전환
             if (!targetDeviceId && navigator.mediaDevices.enumerateDevices) {
                 const refreshedDeviceId = await getBestMainCameraDeviceId();
                 if (refreshedDeviceId) {
@@ -634,14 +610,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 await el.cameraVideo.play();
             }
 
-            // 1.0x 표준 줌 배율 + 연속 초점(Continuous Focus) 강제 고정
             const track = stream.getVideoTracks()[0];
             if (track && typeof track.applyConstraints === 'function') {
                 try {
                     const caps = track.getCapabilities ? track.getCapabilities() : {};
                     const adv = [{ focusMode: 'continuous' }];
 
-                    // 줌 배율을 1.0x(또는 최소 표준 배율)로 맞추어 광각 왜곡 방지
                     if (caps.zoom) {
                         const targetZoom = Math.max(caps.zoom.min || 1, Math.min(1.0, caps.zoom.max || 1));
                         adv[0].zoom = targetZoom;
@@ -661,14 +635,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    /**
-     * Dynamically compute and apply guide frame dimensions based on spec:
-     *  - frame_width  = container_width / 3
-     *  - frame_height = frame_width × 3.5
-     *  - frame_top    = frame_width / 2  (from top of camera view)
-     *  - strip inside frame: width=frame/3, height=frame*(2/3), top offset=frame*(4/3)
-     *  - well circle:  diameter=strip_width, center_y = frame_bottom + frame_width/2
-     */
     function updateCameraGuide() {
         const container = document.querySelector('.camera-container');
         if (!container) return;
@@ -697,8 +663,6 @@ document.addEventListener('DOMContentLoaded', () => {
         applyStyle(strip, { width: sW + 'px', height: sH + 'px', left: sLeft + 'px', top: sTop + 'px', transform: 'none' });
         applyStyle(well, { width: wDiam + 'px', height: wDiam + 'px', left: wLeft + 'px', top: wTop + 'px', transform: 'none' });
 
-        // ── Confirm 화면에 카메라와 완전히 동일한 가이드 위치 적용 ──
-        // confirm-photo-area는 풀스크린이므로 W 그대로 사용
         const cFrame = document.getElementById('confirm-kit-frame');
         const cWin = document.getElementById('confirm-guide-window');
         const cWell = document.getElementById('confirm-guide-well');
@@ -706,17 +670,14 @@ document.addEventListener('DOMContentLoaded', () => {
         applyStyle(cWin, { width: sW + 'px', height: sH + 'px', left: sLeft + 'px', top: sTop + 'px', transform: 'none' });
         applyStyle(cWell, { width: wDiam + 'px', height: wDiam + 'px', left: wLeft + 'px', top: wTop + 'px', transform: 'none' });
 
-        // 가이드 수치를 state에 저장 (캡처 시 confirm 화면 진입 후 재적용용)
         state.guideMetrics = { fW, fH, fTop, fLeft, sW, sH, sLeft, sTop, wDiam, wTop, wLeft };
     }
-
 
     function applyStyle(el, styles) {
         if (!el) return;
         Object.assign(el.style, styles);
     }
 
-    // ── Capture Photo ──
     if (el.btnCapture) {
         el.btnCapture.addEventListener('click', () => {
             let canvas;
@@ -745,47 +706,42 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Crop Exact Strip Region from Red Guide Window ──
     function cropStripFromCapturedCanvas() {
         if (!state.capturedCanvas) return null;
         const srcCanvas = state.capturedCanvas;
         const imgW = srcCanvas.width;
         const imgH = srcCanvas.height;
 
-        // 현재 활성화된 confirm 화면의 사진 영역과 빨간 사각 윈도우의 실제 DOM 픽셀 위치 측정
-        const contEl = document.querySelector('.confirm-photo-area') || 
-                       document.querySelector('.camera-container') || 
-                       document.body;
-        const winEl  = document.getElementById('confirm-guide-window') || 
-                       document.querySelector('.guide-window-cutout');
+        const contEl = document.querySelector('.confirm-photo-area') ||
+            document.querySelector('.camera-container') ||
+            document.body;
+        const winEl = document.getElementById('confirm-guide-window') ||
+            document.querySelector('.guide-window-cutout');
 
         const rectCont = contEl ? contEl.getBoundingClientRect() : { left: 0, top: 0, width: 360, height: 640 };
-        const rectWin  = winEl  ? winEl.getBoundingClientRect()  : null;
+        const rectWin = winEl ? winEl.getBoundingClientRect() : null;
 
-        const dispW = rectCont.width  || 360;
+        const dispW = rectCont.width || 360;
         const dispH = rectCont.height || 640;
 
         let winX, winY, winW, winH;
 
         if (rectWin && rectWin.width > 0 && rectWin.height > 0) {
-            // 실제 렌더링된 윈도우의 컨테이너 상대 좌표
             winX = rectWin.left - rectCont.left;
-            winY = rectWin.top  - rectCont.top;
+            winY = rectWin.top - rectCont.top;
             winW = rectWin.width;
             winH = rectWin.height;
         } else {
-            // DOM 측정이 불가할 때의 비례 fallback
             const fW = Math.round(dispW / 3);
             const fTop = Math.round(fW / 2);
             const fLeft = Math.round((dispW - fW) / 2);
             winW = Math.round(fW / 3);
             winH = Math.round(fW * 2 / 3);
             winX = fLeft + Math.round((fW - winW) / 2);
-            winY = fTop  + Math.round(fW * 4 / 3);
+            winY = fTop + Math.round(fW * 4 / 3);
         }
 
-        // object-fit: cover 스케일 변환 역계산
-        const scale   = Math.max(dispW / imgW, dispH / imgH);
+        const scale = Math.max(dispW / imgW, dispH / imgH);
         const renderW = imgW * scale;
         const renderH = imgH * scale;
         const offsetX = (dispW - renderW) / 2;
@@ -796,14 +752,13 @@ document.addEventListener('DOMContentLoaded', () => {
         let realW = Math.round(winW / scale);
         let realH = Math.round(winH / scale);
 
-        // 이미지 경계 안전 제한
         realX = Math.max(0, Math.min(imgW - 10, realX));
         realY = Math.max(0, Math.min(imgH - 10, realY));
         realW = Math.max(10, Math.min(imgW - realX, realW));
         realH = Math.max(10, Math.min(imgH - realY, realH));
 
         const cropCanvas = document.createElement('canvas');
-        cropCanvas.width  = realW;
+        cropCanvas.width = realW;
         cropCanvas.height = realH;
         const cCtx = cropCanvas.getContext('2d');
         cCtx.drawImage(srcCanvas, realX, realY, realW, realH, 0, 0, realW, realH);
@@ -811,7 +766,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return cropCanvas;
     }
 
-    // ── Top-Left Back Buttons (이전 화면 이동) ──
     if (el.btnBackFromCamera) {
         el.btnBackFromCamera.addEventListener('click', () => {
             stopCamera();
@@ -845,10 +799,8 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 if (!state.analyzer) state.analyzer = new LFAAnalyzer();
 
-                // 사용자가 화면의 빨간 사각에 맞춘 멤브레인 영역만 정확히 크롭
                 const croppedStrip = cropStripFromCapturedCanvas() || state.capturedCanvas;
 
-                // 크롭된 스트립 이미지로 정확한 흡광도 분석 실행
                 const result = await state.analyzer.analyze(croppedStrip, { isPreCropped: true });
                 if (result.visualData) {
                     result.visualData.stripCanvas = croppedStrip;
@@ -858,12 +810,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const savedRecord = saveResultRecord(result, croppedStrip);
 
-                // Auto-sync to Google Sheets (Drive 이미지 업로드 포함)
                 try {
                     const cropUrl = savedRecord?.cropImageDataUrl || croppedStrip.toDataURL('image/jpeg', 0.85);
                     if (state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
                         state.sheetsSync.syncResult(
-                            result, 
+                            result,
                             state.currentUser,
                             savedRecord?.memo || '',
                             savedRecord?.cropFilename || '',
@@ -891,9 +842,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─────────────────────────────────────────────────────────────
     // RESULTS & HISTORY
     // ─────────────────────────────────────────────────────────────
-    /**
-     * Save analysis result with crop image (base64) and profile data for graph popup.
-     */
     function saveResultRecord(analysis, croppedCanvas = null) {
         if (!analysis || !analysis.diagnosis) return null;
         const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
@@ -902,19 +850,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const now = new Date();
         const pad = n => String(n).padStart(2, '0');
         const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-        
-        // 파일명 형식: user_ID_timestamp.jpg (예: yelloi_20260830203105.jpg)
+
         const fileTimestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
         const fname = `${state.currentUser.username}_${fileTimestamp}.jpg`;
 
-        // Crop image as base64 JPEG (stored locally) - 빨간 사각 크롭 캔버스 우선 저장
         let cropDataUrl = null;
         try {
             const sc = croppedCanvas || analysis.visualData?.stripCanvas || analysis.visualData?.previewCanvas;
             if (sc) cropDataUrl = sc.toDataURL('image/jpeg', 0.85);
         } catch (_) { }
 
-        // Absorbance profile for graph drawing
         let profileData = null;
         try {
             const vd = analysis.visualData;
@@ -951,14 +896,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return record;
     }
 
-    /**
-     * 구글 드라이브 URL 또는 일반 URL을 브라우저 렌더링용 이미지 URL로 변환
-     */
     function resolveImageUrl(url) {
         if (!url) return null;
         if (url.startsWith('data:image/')) return url;
 
-        // Google Drive 링크 형식 (file/d/ID 또는 id=ID)
         let fileId = null;
         const match1 = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
         if (match1) fileId = match1[1];
@@ -966,25 +907,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (match2) fileId = match2[1];
 
         if (fileId) {
-            // 구글 드라이브 고화질 썸네일/뷰어 URL
             return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
         }
         return url;
     }
 
-    /**
-     * 구글 시트로부터 최신 검사 기록 전체를 실시간으로 불러와 테이블 갱신
-     */
     async function loadAndRenderResultsTable() {
-        // 1. 기존 로컬 캐시 먼저 즉시 표시 (사용자 체감 지연 0)
         renderResultsTable();
 
-        // 2. 구글 시트에서 전체 기록 가져오기
         if (state.sheetsSync && typeof state.sheetsSync.fetchResults === 'function') {
             try {
                 const res = await state.sheetsSync.fetchResults(state.currentUser.username);
                 if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-                    // 구글 시트의 전체 최신 목록으로 로컬 스토리지 동기화
                     localStorage.setItem('yls_lfa_history', JSON.stringify(res.data));
                     renderResultsTable();
                 }
@@ -994,7 +928,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ── Render paginated results table ──
     function renderResultsTable() {
         const tbody = el.resultsBody;
         if (!tbody) return;
@@ -1037,13 +970,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><span class="memo-cell${hasMemo ? ' has-memo' : ''}" data-id="${rec.id}">${memoLabel}</span></td>
             `;
 
-            // Row click → graph popup
             tr.addEventListener('click', e => {
                 if (e.target.classList.contains('memo-cell')) return;
                 showGraphPopup(rec);
             });
 
-            // Memo cell click → memo popup
             const memoSpan = tr.querySelector('.memo-cell');
             if (memoSpan) {
                 memoSpan.addEventListener('click', e => {
@@ -1093,7 +1024,6 @@ document.addEventListener('DOMContentLoaded', () => {
         el.btnReturnHome.addEventListener('click', () => navigateTo('timesetting'));
     }
 
-    // ── CSV Export & Settings Modal ──
     if (el.btnExportCsv) {
         el.btnExportCsv.addEventListener('click', () => {
             if (state.sheetsSync && typeof state.sheetsSync.exportCSV === 'function') {
@@ -1158,6 +1088,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (idx >= 0) {
             history[idx].memo = (el.memoTextarea?.value || '').trim();
             localStorage.setItem('yls_lfa_history', JSON.stringify(history));
+
+            // 구글 시트에 메모 변경 동기화
+            if (state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
+                state.sheetsSync.syncResult(
+                    { diagnosis: { result: history[idx].result, concentrationStr: history[idx].concentrationStr } },
+                    state.currentUser,
+                    history[idx].memo,
+                    history[idx].cropFilename || '',
+                    history[idx].cropImageDataUrl || ''
+                ).catch(e => console.warn('Memo sheet sync error:', e));
+            }
         }
         closeMemoPopup();
         renderResultsTable();
@@ -1172,27 +1113,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // GRAPH ANALYSIS POPUP
+    // GRAPH ANALYSIS POPUP (상단 뱃지 갱신 및 구글 시트 동기화 수정 반영)
     // ─────────────────────────────────────────────────────────────
+
+    /**
+     * 상단 결과 뱃지 텍스트 및 CSS 클래스 동적 업데이트 헬퍼
+     */
+    function updateResultBadge(resText) {
+        if (!el.graphPopupResult) return;
+        const res = resText || '실패';
+        el.graphPopupResult.textContent = `‘검사결과 : ${res}’`;
+        el.graphPopupResult.className = 'graph-popup-result-badge';
+        if (res === '양성' || res === 'positive') {
+            el.graphPopupResult.classList.add('badge-positive');
+        } else if (res === '음성' || res === 'negative') {
+            el.graphPopupResult.classList.add('badge-negative');
+        } else {
+            el.graphPopupResult.classList.add('badge-fail');
+        }
+    }
+
     function showGraphPopup(record) {
         if (el.graphPopup) el.graphPopup.classList.remove('hidden');
-        console.log('[DEBUG] showGraphPopup opened for record:', record);
 
-        // ── Header Result Badge ('검사결과 : xx') ──
-        if (el.graphPopupResult) {
-            const res = record.result || '실패';
-            el.graphPopupResult.textContent = `‘검사결과 : ${res}’`;
-            el.graphPopupResult.className = 'graph-popup-result-badge';
-            if (res === '양성' || res === 'positive') {
-                el.graphPopupResult.classList.add('badge-positive');
-            } else if (res === '음성' || res === 'negative') {
-                el.graphPopupResult.classList.add('badge-negative');
-            } else {
-                el.graphPopupResult.classList.add('badge-fail');
-            }
-        }
+        // 초기 뱃지 표시
+        updateResultBadge(record.result);
 
-        // ── Strip image & Dynamic Analysis ──
+        // Strip image & Dynamic Analysis
         const sc = el.graphStripCanvas;
         if (sc) {
             sc.width = 72;
@@ -1205,20 +1152,17 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.textAlign = 'center';
             ctx.fillText('로딩 중...', 36, 95);
 
-            // 파일 ID 자동 추출 (fileId 필드가 없더라도 cropUrl에서 파싱)
             let targetFileId = record.driveFileId;
             if (!targetFileId && record.cropUrl) {
-                const idM = record.cropUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || 
-                            record.cropUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
-                            record.cropUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+                const idM = record.cropUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+                    record.cropUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
+                    record.cropUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
                 if (idM) targetFileId = idM[1];
             }
 
-            // 1. 이미 Base64 데이터가 로컬에 있는 경우
             if (record.cropImageDataUrl && record.cropImageDataUrl.startsWith('data:image/')) {
                 renderStripAndAnalyze(record.cropImageDataUrl);
-            } 
-            // 2. 구글 드라이브 파일 ID가 있는 경우 (GAS 프록시로 Base64 조회 시도 후 실패 시 직접 URL 시도)
+            }
             else if (targetFileId) {
                 if (state.sheetsSync) {
                     state.sheetsSync.fetchDriveImageBase64(targetFileId).then(b64 => {
@@ -1226,7 +1170,6 @@ document.addEventListener('DOMContentLoaded', () => {
                             record.cropImageDataUrl = b64;
                             renderStripAndAnalyze(b64);
                         } else {
-                            // GAS 프록시 실패 시 구글 썸네일 직접 URL로 2차 시도
                             tryDirectThumbnail(targetFileId);
                         }
                     }).catch(() => tryDirectThumbnail(targetFileId));
@@ -1234,7 +1177,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     tryDirectThumbnail(targetFileId);
                 }
             }
-            // 3. 일반 이미지 URL인 경우
             else if (record.cropUrl) {
                 renderStripAndAnalyze(record.cropUrl);
             } else {
@@ -1255,11 +1197,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     sCtx.clearRect(0, 0, sc.width, sc.height);
                     sCtx.drawImage(img, 0, 0);
 
-                    // 과거 기록에 피크 분석 데이터가 없는 경우, 즉시 LFAAnalyzer로 실시간 계산
-                    if (!record.profileData && state.analyzer) {
+                    // 이미지를 다시 분석하여 실시간 재계산
+                    if (state.analyzer) {
                         state.analyzer.analyze(sc, { isPreCropped: true }).then(analysisRes => {
                             if (analysisRes && analysisRes.visualData) {
                                 const vd = analysisRes.visualData;
+                                const diag = analysisRes.diagnosis || {};
+                                const newResult = diag.result || '실패';
+                                const oldResult = record.result;
+
+                                // 1. 상단 팝업 뱃지 실시간 리프레쉬
+                                updateResultBadge(newResult);
+
                                 record.profileData = {
                                     corrected: Array.from(vd.correctedProfile || []),
                                     cLineIndex: vd.cLineIndex,
@@ -1270,15 +1219,43 @@ document.addEventListener('DOMContentLoaded', () => {
                                     tLineRange: vd.tLineRange
                                 };
                                 record.metrics = analysisRes.metrics;
-                                record.confidence = analysisRes.diagnosis?.confidence;
+                                record.confidence = diag.confidence;
 
-                                // 그래프 및 수치 업데이트
+                                // 결과 변경 사항 업데이트 처리
+                                record.result = newResult;
+                                if (diag.concentrationStr) {
+                                    record.concentrationStr = diag.concentrationStr;
+                                }
+
+                                // 2. 그래프 및 측정값 리프레쉬
                                 drawAbsorbanceGraph(record);
                                 const m = record.metrics || {};
                                 setText(el.metricT, m.tPeakHeight != null ? m.tPeakHeight.toFixed(3) : '-');
                                 setText(el.metricC, m.cPeakHeight != null ? m.cPeakHeight.toFixed(3) : '-');
                                 setText(el.metricConf, record.confidence != null ? record.confidence.toFixed(1) + '%' : '-');
                                 setText(el.metricSnr, m.signalToNoise != null ? m.signalToNoise.toFixed(1) + ' dB' : '-');
+
+                                // 3. 로컬 저장소(localStorage) 내 레코드 업데이트 및 테이블 갱신
+                                const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
+                                const hIdx = history.findIndex(r => r.id === record.id);
+                                if (hIdx >= 0) {
+                                    history[hIdx] = { ...history[hIdx], ...record };
+                                    localStorage.setItem('yls_lfa_history', JSON.stringify(history));
+                                    renderResultsTable();
+                                }
+
+                                // 4. 구글 시트(Google Sheets)에 최신 재분석 결과 업데이트 전송
+                                if (oldResult !== newResult && state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
+                                    state.sheetsSync.syncResult(
+                                        analysisRes,
+                                        state.currentUser,
+                                        record.memo || '',
+                                        record.cropFilename || '',
+                                        record.cropImageDataUrl || imgSrc
+                                    ).then(() => {
+                                        console.log(`[GoogleSheets] 레코드(${record.id}) 업데이트 성공: ${oldResult} -> ${newResult}`);
+                                    }).catch(err => console.warn('Google Sheets update sync error:', err));
+                                }
                             }
                         }).catch(e => console.warn('Realtime profile analysis failed:', e));
                     }
@@ -1300,10 +1277,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // ── Absorbance graph ──
         drawAbsorbanceGraph(record);
 
-        // ── Metrics ──
         const m = record.metrics || {};
         const conf = record.confidence;
 
@@ -1327,7 +1302,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setText(node, text) { if (node) node.textContent = text; }
 
-    // ── Draw absorbance profile graph on canvas ──
     function drawAbsorbanceGraph(record) {
         const canvas = el.graphProfile;
         if (!canvas) return;
@@ -1358,7 +1332,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let maxVal = 0.0001;
         for (const v of profile) if (v > maxVal) maxVal = v;
 
-        // Grid lines
         ctx.strokeStyle = '#e2e8f0';
         ctx.lineWidth = 0.5;
         for (let g = 0; g <= 4; g++) {
@@ -1366,7 +1339,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.beginPath(); ctx.moveTo(pL, y); ctx.lineTo(pL + pW, y); ctx.stroke();
         }
 
-        // Shaded zones
         if (pd.tLineRange) {
             const [l, r] = pd.tLineRange;
             ctx.fillStyle = 'rgba(239,68,68,0.10)';
@@ -1378,7 +1350,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.fillRect(pL + (l / N) * pW, pT, Math.max(2, ((r - l) / N) * pW), pH);
         }
 
-        // Profile line (green channel curve)
         ctx.beginPath();
         ctx.strokeStyle = '#10b981';
         ctx.lineWidth = 1.8;
@@ -1389,7 +1360,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         ctx.stroke();
 
-        // T-Line marker
         if (pd.tLineDetected && pd.tLineIndex != null) {
             const x = pL + (pd.tLineIndex / (N - 1)) * pW;
             ctx.strokeStyle = '#ef4444';
@@ -1403,7 +1373,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.fillText('T', x, pT - 5);
         }
 
-        // C-Line marker
         if (pd.cLineDetected && pd.cLineIndex != null) {
             const x = pL + (pd.cLineIndex / (N - 1)) * pW;
             ctx.strokeStyle = '#10b981';
@@ -1417,7 +1386,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.fillText('C', x, pT - 5);
         }
 
-        // Axes
         ctx.strokeStyle = '#94a3b8';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -1426,13 +1394,11 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.lineTo(pL + pW, pT + pH);
         ctx.stroke();
 
-        // X-axis label
         ctx.fillStyle = '#64748b';
         ctx.font = '7px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('← 샘플웰       흡수패드 →', pL + pW / 2, H - 5);
 
-        // Y-axis label
         ctx.save();
         ctx.translate(9, pT + pH / 2);
         ctx.rotate(-Math.PI / 2);
@@ -1440,7 +1406,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillText('흡광도', 0, 0);
         ctx.restore();
 
-        // Legend
         ctx.textAlign = 'left';
         ctx.fillStyle = '#ef4444';
         ctx.fillRect(pL, pT - 18, 8, 6);
@@ -1461,7 +1426,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ─────────────────────────────────────────────────────────────
-    // ANDROID 뒤로가기 처리 (popstate → 앱 종료 확인 팝업)
+    // ANDROID 뒤로가기 처리
     // ─────────────────────────────────────────────────────────────
     let exitPopupVisible = false;
 
@@ -1469,7 +1434,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!el.exitConfirmPopup) return;
         exitPopupVisible = true;
         el.exitConfirmPopup.classList.remove('hidden');
-        // 팝업 표시 후 다시 history stack 쌓아서 연속 뒤로가기 방지
         history.pushState({ ylsApp: true }, '');
     }
 
@@ -1479,43 +1443,36 @@ document.addEventListener('DOMContentLoaded', () => {
         el.exitConfirmPopup.classList.add('hidden');
     }
 
-    // 페이지 진입 시 history stack에 더미 state 추가 (뒤로가기 감지용)
     history.pushState({ ylsApp: true }, '');
 
     window.addEventListener('popstate', (e) => {
         if (exitPopupVisible) {
-            // 팝업이 떠 있는 상태에서 또 뒤로가기 → 팝업 닫기
             hideExitPopup();
             history.pushState({ ylsApp: true }, '');
             return;
         }
 
-        // 카메라/확인 화면에서는 뒤로가기 무시하고 스택 유지
         if (state.activeView === 'view-camera' || state.activeView === 'view-confirm') {
             history.pushState({ ylsApp: true }, '');
             return;
         }
 
-        // 로그인 화면에서는 앱 종료 확인
         if (state.activeView === 'view-login') {
             showExitPopup();
             return;
         }
 
-        // 시간설정 화면에서는 앱 종료 확인
         if (state.activeView === 'view-timesetting') {
             showExitPopup();
             return;
         }
 
-        // 검사결과 화면에서는 시간설정 화면으로 복귀
         if (state.activeView === 'view-results') {
             navigateTo('timesetting');
             history.pushState({ ylsApp: true }, '');
             return;
         }
 
-        // 그 외 뒤로가기 무시
         history.pushState({ ylsApp: true }, '');
     });
 
@@ -1528,11 +1485,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (el.btnExitYes) {
         el.btnExitYes.addEventListener('click', () => {
-            // PWA / WebApp 종료 처리
             try {
                 window.close();
             } catch (_) { }
-            // window.close()가 실패하는 경우 빈 페이지로 이동
             try {
                 window.location.replace('about:blank');
             } catch (_) { }
@@ -1540,7 +1495,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // App Startup (새로고침 시 로그인 상태 및 현재 화면 자동 유지)
+    // App Startup
     // ─────────────────────────────────────────────────────────────
     if (el.inputPassword) el.inputPassword.value = '';
 
@@ -1548,7 +1503,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const savedUsername = localStorage.getItem('yls_user_name') || 'yelloi';
     let lastView = localStorage.getItem('yls_last_view') || 'timesetting';
 
-    // 카메라/확인 화면에서 새로고침한 경우 안전하게 시간설정 화면으로 복원
     if (lastView === 'camera' || lastView === 'confirm') {
         lastView = 'timesetting';
     }
@@ -1557,7 +1511,6 @@ document.addEventListener('DOMContentLoaded', () => {
         state.currentUser.username = savedUsername;
         state.currentUser.isLoggedIn = true;
         navigateTo(lastView);
-        // 구글 시트 백그라운드 동기화
         loadAndRenderResultsTable();
     } else {
         navigateTo('login');
