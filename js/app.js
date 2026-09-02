@@ -1,6 +1,6 @@
 /**
  * YLS LFA Kit AI Diagnostic WebApp Controller
- * v4.1 — 실시간 이미지 재분석, 상단 뱃지 갱신 및 구글 시트 동기화 자동 업데이트 반영
+ * v4.2 — 실시간 핀치 줌(확대/축소) 제스처 지원, 상단 뱃지 갱신 및 구글 시트 동기화 자동 업데이트 반영
  *
  * Flow: Login (yelloi/1111) → Time Setting (countdown) → Camera →
  *       Photo Confirm → Results (15/page, memo, absorbance graph popup)
@@ -36,7 +36,13 @@ document.addEventListener('DOMContentLoaded', () => {
         countdownInterval: null,
         countdownRemaining: 0,
         currentPage: 1,
-        memoEditId: null
+        memoEditId: null,
+        // Zoom control states
+        currentZoom: 1.0,
+        minZoom: 1.0,
+        maxZoom: 5.0,
+        pinchStartDist: 0,
+        pinchStartZoom: 1.0
     };
 
     // ── Initialize mock history on first run ──
@@ -106,6 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Camera
         cameraVideo: document.getElementById('camera-video'),
         btnCapture: document.getElementById('btn-capture-photo'),
+        cameraContainer: document.querySelector('.camera-container'),
         // Confirm
         confirmCanvas: document.getElementById('confirm-preview-canvas'),
         btnConfirmNo: document.getElementById('btn-confirm-no'),
@@ -505,7 +512,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // CAMERA
+    // CAMERA & PINCH ZOOM CONTROL
     // ─────────────────────────────────────────────────────────────
     async function getBestMainCameraDeviceId() {
         try {
@@ -561,9 +568,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function applyCameraZoom(zoomLevel) {
+        state.currentZoom = Math.max(state.minZoom, Math.min(state.maxZoom, zoomLevel));
+
+        if (state.stream) {
+            const track = state.stream.getVideoTracks()[0];
+            if (track && typeof track.applyConstraints === 'function') {
+                try {
+                    const caps = track.getCapabilities ? track.getCapabilities() : {};
+                    if (caps.zoom) {
+                        const targetZoom = Math.max(caps.zoom.min || 1, Math.min(state.currentZoom, caps.zoom.max || 1));
+                        await track.applyConstraints({ advanced: [{ zoom: targetZoom }] });
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('Hardware zoom apply failed:', e);
+                }
+            }
+        }
+
+        // Hardware Zoom 미지원 디바이스 - CSS Transform 확대 Fallback
+        if (el.cameraVideo) {
+            el.cameraVideo.style.transform = `scale(${state.currentZoom})`;
+            el.cameraVideo.style.transformOrigin = 'center center';
+        }
+    }
+
     async function startCamera() {
         try {
             stopCamera();
+            state.currentZoom = 1.0;
 
             let targetDeviceId = await getBestMainCameraDeviceId();
 
@@ -607,18 +641,26 @@ document.addEventListener('DOMContentLoaded', () => {
             state.stream = stream;
             if (el.cameraVideo) {
                 el.cameraVideo.srcObject = stream;
+                el.cameraVideo.style.transform = 'scale(1.0)';
                 await el.cameraVideo.play();
             }
 
             const track = stream.getVideoTracks()[0];
+            if (track && typeof track.getCapabilities === 'function') {
+                const caps = track.getCapabilities();
+                if (caps.zoom) {
+                    state.minZoom = caps.zoom.min || 1.0;
+                    state.maxZoom = caps.zoom.max || 5.0;
+                }
+            }
+
             if (track && typeof track.applyConstraints === 'function') {
                 try {
                     const caps = track.getCapabilities ? track.getCapabilities() : {};
                     const adv = [{ focusMode: 'continuous' }];
 
                     if (caps.zoom) {
-                        const targetZoom = Math.max(caps.zoom.min || 1, Math.min(1.0, caps.zoom.max || 1));
-                        adv[0].zoom = targetZoom;
+                        adv[0].zoom = state.minZoom;
                     }
                     await track.applyConstraints({ advanced: adv });
                 } catch (_) { }
@@ -633,6 +675,37 @@ document.addEventListener('DOMContentLoaded', () => {
             state.stream.getTracks().forEach(t => t.stop());
             state.stream = null;
         }
+    }
+
+    // 두 손가락 터치(Pinch Gesture) 확대/축소 이벤트 핸들러
+    if (el.cameraContainer) {
+        const getTouchDistance = (e) => {
+            const t1 = e.touches[0];
+            const t2 = e.touches[1];
+            return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        };
+
+        el.cameraContainer.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                state.pinchStartDist = getTouchDistance(e);
+                state.pinchStartZoom = state.currentZoom;
+            }
+        }, { passive: true });
+
+        el.cameraContainer.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2 && state.pinchStartDist > 0) {
+                const dist = getTouchDistance(e);
+                const factor = dist / state.pinchStartDist;
+                const newZoom = state.pinchStartZoom * factor;
+                applyCameraZoom(newZoom);
+            }
+        }, { passive: true });
+
+        el.cameraContainer.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                state.pinchStartDist = 0;
+            }
+        }, { passive: true });
     }
 
     function updateCameraGuide() {
@@ -687,7 +760,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 canvas = document.createElement('canvas');
                 canvas.width = vw;
                 canvas.height = vh;
-                canvas.getContext('2d').drawImage(el.cameraVideo, 0, 0, vw, vh);
+                const ctx = canvas.getContext('2d');
+
+                // Software Fallback Zoom이 사용되었을 경우 Canvas 크롭 영역 매핑
+                if (state.currentZoom > 1.0) {
+                    const cropW = vw / state.currentZoom;
+                    const cropH = vh / state.currentZoom;
+                    const cropX = (vw - cropW) / 2;
+                    const cropY = (vh - cropH) / 2;
+                    ctx.drawImage(el.cameraVideo, cropX, cropY, cropW, cropH, 0, 0, vw, vh);
+                } else {
+                    ctx.drawImage(el.cameraVideo, 0, 0, vw, vh);
+                }
             } else if (typeof LFATestSamples !== 'undefined' && LFATestSamples.createSyntheticKit) {
                 canvas = LFATestSamples.createSyntheticKit({ cLine: 0.88, tLine: 0.45, noise: 0.02 });
             } else {
@@ -1113,12 +1197,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // GRAPH ANALYSIS POPUP (상단 뱃지 갱신 및 구글 시트 동기화 수정 반영)
+    // GRAPH ANALYSIS POPUP
     // ─────────────────────────────────────────────────────────────
-
-    /**
-     * 상단 결과 뱃지 텍스트 및 CSS 클래스 동적 업데이트 헬퍼
-     */
     function updateResultBadge(resText) {
         if (!el.graphPopupResult) return;
         const res = resText || '실패';
@@ -1136,10 +1216,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function showGraphPopup(record) {
         if (el.graphPopup) el.graphPopup.classList.remove('hidden');
 
-        // 초기 뱃지 표시
         updateResultBadge(record.result);
 
-        // Strip image & Dynamic Analysis
         const sc = el.graphStripCanvas;
         if (sc) {
             sc.width = 72;
@@ -1197,7 +1275,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     sCtx.clearRect(0, 0, sc.width, sc.height);
                     sCtx.drawImage(img, 0, 0);
 
-                    // 이미지를 다시 분석하여 실시간 재계산
                     if (state.analyzer) {
                         state.analyzer.analyze(sc, { isPreCropped: true }).then(analysisRes => {
                             if (analysisRes && analysisRes.visualData) {
@@ -1206,7 +1283,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const newResult = diag.result || '실패';
                                 const oldResult = record.result;
 
-                                // 1. 상단 팝업 뱃지 실시간 리프레쉬
                                 updateResultBadge(newResult);
 
                                 record.profileData = {
@@ -1221,13 +1297,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                 record.metrics = analysisRes.metrics;
                                 record.confidence = diag.confidence;
 
-                                // 결과 변경 사항 업데이트 처리
                                 record.result = newResult;
                                 if (diag.concentrationStr) {
                                     record.concentrationStr = diag.concentrationStr;
                                 }
 
-                                // 2. 그래프 및 측정값 리프레쉬
                                 drawAbsorbanceGraph(record);
                                 const m = record.metrics || {};
                                 setText(el.metricT, m.tPeakHeight != null ? m.tPeakHeight.toFixed(3) : '-');
@@ -1235,7 +1309,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 setText(el.metricConf, record.confidence != null ? record.confidence.toFixed(1) + '%' : '-');
                                 setText(el.metricSnr, m.signalToNoise != null ? m.signalToNoise.toFixed(1) + ' dB' : '-');
 
-                                // 3. 로컬 저장소(localStorage) 내 레코드 업데이트 및 테이블 갱신
                                 const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
                                 const hIdx = history.findIndex(r => r.id === record.id);
                                 if (hIdx >= 0) {
@@ -1244,7 +1317,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                     renderResultsTable();
                                 }
 
-                                // 4. 구글 시트(Google Sheets)에 최신 재분석 결과 업데이트 전송
                                 if (oldResult !== newResult && state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
                                     state.sheetsSync.syncResult(
                                         analysisRes,
