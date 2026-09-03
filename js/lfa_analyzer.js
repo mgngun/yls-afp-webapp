@@ -23,12 +23,18 @@ class LFAAnalyzer {
             // Peak geometry requirements optimized for smartphone camera images
             minPeakFWHM: 3,        // Min peak full-width at half-max (pixels) - rejects 1px noise spikes
             maxPeakFWHM: 40,       // Max peak width (rejects broad shadows/gradients)
-            minCProminenceSigma: 3.5, // C-line must be > 3.5 * background noise σ
-            minTProminenceSigma: 3.0, // T-line must be > 3.0 * background noise σ
-            minLocalProminence: 0.004, // Minimum local peak height above surrounding valleys
+            minCProminenceSigma: 3.0, // C-line must be > 3.0 * background noise σ
+            minTProminenceSigma: 2.5, // T-line must be > 2.5 * background noise σ
+            minLocalProminence: 0.003, // Minimum local peak height above surrounding valleys
             minTCRatio: 0.08,      // T-Line must be at least 8% of C-Line height to be considered positive
-            absoluteMinCPeak: 0.020,  // Absolute minimum absorbance drop for C-line (2.0%)
-            absoluteMinTPeak: 0.009,  // Absolute minimum absorbance drop for faint T-line (0.9%)
+            // NOTE: these two absolute floors were tuned against the OLD fixed-radius
+            // morphological top-hat baseline, which systematically UNDER-estimated the height
+            // of any real line wider than ~2*kRadius (14px) — exactly the broad, faint lines we
+            // most need to catch. The baseline estimator below now recovers the true (larger)
+            // drop for lines of any width up to maxPeakFWHM, so these floors are lowered to match
+            // the corrected units instead of compensating for the old bias.
+            absoluteMinCPeak: 0.012,  // Absolute minimum absorbance drop for C-line (1.2%)
+            absoluteMinTPeak: 0.005,  // Absolute minimum absorbance drop for faint T-line (0.5%)
 
             // --- Faint-line sensitivity enhancements ---
             autoChannelSelect: true,   // Auto-pick R/G/B channel with best line/background contrast (dye color agnostic)
@@ -448,8 +454,28 @@ class LFAAnalyzer {
     }
 
     /**
-     * Morphological 1D Top-Hat Baseline Compensation:
-     * Removes all gradual lighting gradients, leaving ONLY narrow, sharp line absorptions.
+     * Peak-Zone-Aware Baseline Compensation:
+     * Removes gradual lighting gradients, leaving ONLY narrow, sharp line absorptions.
+     *
+     * WHY THIS CHANGED: the previous version used a fixed-radius (14px) morphological
+     * opening (dilate-then-erode) to estimate the background everywhere, including right
+     * through the T/C line positions themselves. That only works if the structuring element
+     * is wider than the line — but real lines (especially faint, diffuse ones, which is
+     * exactly the case we most want to catch) can be as wide as `maxPeakFWHM` (40px), close
+     * to or exceeding the old kernel's reach (29px window). When the kernel is too small,
+     * the "baseline" estimate itself gets pulled down into the dip, so the measured
+     * baseline-minus-profile drop comes out systematically SMALLER than the line's true
+     * strength — i.e. it under-reports faint/broad lines the most, backwards from what we
+     * want. That's why a genuinely visible C-line dropped from ~0.020 to ~0.013 and failed.
+     *
+     * FIX: we already know approximately where the T-line and C-line must sit
+     * (tLinePosRatio / cLinePosRatio). We exclude a generous window around each expected
+     * position from the background estimate entirely, and instead bridge the background
+     * across that window with a straight-line interpolation between the (real, unbiased)
+     * background values just outside its edges. This recovers the correct baseline — and
+     * therefore correct line height — no matter how wide or faint the actual line is, up to
+     * the size of the excluded window. A small kernel is still used elsewhere in the profile
+     * to soak up local dust/shadow noise without touching the line zones at all.
      */
     _compensateIlluminationRobust(profile) {
         const len = profile.length;
@@ -457,9 +483,10 @@ class LFAAnalyzer {
         const corrected = new Float32Array(len);
         const topHat = new Float32Array(len);
 
-        const kRadius = 14;
-        
-        // 1. Dilation (Local Maximum)
+        // Small kernel: only for local noise/dust OUTSIDE the line zones. Deliberately much
+        // smaller than any expected line width so it can never itself erode into a real peak.
+        const kRadius = 6;
+
         const dilated = new Float32Array(len);
         for (let i = 0; i < len; i++) {
             let maxVal = -1;
@@ -469,16 +496,34 @@ class LFAAnalyzer {
             }
             dilated[i] = maxVal;
         }
-
-        // 2. Erosion (Local Minimum of Dilated) -> Forms Morphological Background Baseline
+        const closed = new Float32Array(len);
         for (let i = 0; i < len; i++) {
             let minVal = 999;
             for (let k = -kRadius; k <= kRadius; k++) {
                 const idx = Math.min(len - 1, Math.max(0, i + k));
                 if (dilated[idx] < minVal) minVal = dilated[idx];
             }
-            baseline[i] = minVal;
-            
+            closed[i] = minVal;
+        }
+        for (let i = 0; i < len; i++) baseline[i] = closed[i];
+
+        // Exclude generous windows around the expected T-line & C-line positions (wider than
+        // the actual search tolerance, so the interpolation anchor points sit safely outside
+        // even the widest allowed peak) and bridge the background linearly across each.
+        const zones = this._expectedLineZones(len);
+        for (const [zStart, zEnd] of zones) {
+            const leftEdge = Math.max(0, zStart - 1);
+            const rightEdge = Math.min(len - 1, zEnd + 1);
+            const leftVal = closed[leftEdge];
+            const rightVal = closed[rightEdge];
+            const span = rightEdge - leftEdge;
+            for (let i = zStart; i <= zEnd; i++) {
+                const t = span > 0 ? (i - leftEdge) / span : 0;
+                baseline[i] = leftVal + (rightVal - leftVal) * t;
+            }
+        }
+
+        for (let i = 0; i < len; i++) {
             // Top-Hat signal: ΔI = Baseline - Profile (positive for dark lines, exactly 0 for smooth background)
             const drop = Math.max(0, baseline[i] - profile[i]);
             topHat[i] = drop / (baseline[i] || 200); // Normalized relative absorption
@@ -486,6 +531,22 @@ class LFAAnalyzer {
         }
 
         return { baseline, correctedProfile: corrected, topHatProfile: topHat };
+    }
+
+    /**
+     * Generous [start, end] index windows around the expected T-line and C-line positions,
+     * wider than the actual detection search tolerance so baseline-interpolation anchor
+     * points always land safely outside even the widest allowed peak (maxPeakFWHM).
+     * Shared by baseline compensation and noise-sigma estimation so both agree on what
+     * counts as "signal" vs "background".
+     */
+    _expectedLineZones(len) {
+        const marginFactor = 1.6; // widen beyond peakTolerance as a safety margin
+        return [this.config.tLinePosRatio, this.config.cLinePosRatio].map(ratio => {
+            const expected = Math.round(len * ratio);
+            const tol = Math.round(len * this.config.peakTolerance * marginFactor);
+            return [Math.max(0, expected - tol), Math.min(len - 1, expected + tol)];
+        });
     }
 
     /**
@@ -552,14 +613,24 @@ class LFAAnalyzer {
      * MAD is far less influenced by the C/T line "outlier" peaks themselves than an RMS
      * over the lowest-60% of samples, which lets us safely lower detection thresholds for
      * faint lines without inflating false positives from residual shadow/gradient noise.
+     *
+     * We ALSO explicitly exclude the expected T/C line windows here: a real (even faint)
+     * line is not "noise", and letting it leak into this sample would inflate σ and — via
+     * minCProminenceSigma/minTProminenceSigma — raise the very threshold we're trying to
+     * clear, making faint-but-real lines harder to detect the stronger they are. Excluding
+     * them keeps the noise estimate a true measurement of blank-membrane background only.
      */
     _computeNoiseSigma(topHat) {
         const len = topHat.length;
         // Collect middle 80% to avoid boundary edge shadows
         const start = Math.floor(len * 0.10);
         const end = Math.floor(len * 0.90);
+        const zones = this._expectedLineZones(len);
         const inner = [];
-        for (let i = start; i < end; i++) inner.push(topHat[i]);
+        for (let i = start; i < end; i++) {
+            const inZone = zones.some(([zs, ze]) => i >= zs && i <= ze);
+            if (!inZone) inner.push(topHat[i]);
+        }
         if (inner.length === 0) return 0.0008;
 
         const sorted = [...inner].sort((a, b) => a - b);
