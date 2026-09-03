@@ -751,26 +751,90 @@ document.addEventListener('DOMContentLoaded', () => {
         Object.assign(el.style, styles);
     }
 
-    if (el.btnCapture) {
-        el.btnCapture.addEventListener('click', () => {
-            let canvas;
-            if (state.stream && el.cameraVideo && el.cameraVideo.videoWidth > 0) {
-                const vw = el.cameraVideo.videoWidth;
-                const vh = el.cameraVideo.videoHeight;
-                canvas = document.createElement('canvas');
-                canvas.width = vw;
-                canvas.height = vh;
-                const ctx = canvas.getContext('2d');
+    // ─────────────────────────────────────────────────────────────
+    // Burst-average capture: grabs several frames in rapid succession and
+    // pixel-averages them BEFORE any analysis. Random camera sensor/read noise
+    // averages down by roughly sqrt(N) across N frames, while the real strip
+    // image (line included) stays the same — so a faint T-line that sits just
+    // below the noise floor in any single frame becomes reliably visible in
+    // the averaged image. This is a hardware-level SNR improvement that no
+    // amount of post-processing on one photo alone can recover, and it works
+    // silently in the background during the normal capture button press.
+    // ─────────────────────────────────────────────────────────────
+    const BURST_FRAME_COUNT = 6;
+    const BURST_INTERVAL_MS = 30; // total burst window ~150-180ms — short enough that normal hand tremor is sub-pixel
 
-                // Software Fallback Zoom이 사용되었을 경우 Canvas 크롭 영역 매핑
-                if (state.currentZoom > 1.0) {
-                    const cropW = vw / state.currentZoom;
-                    const cropH = vh / state.currentZoom;
-                    const cropX = (vw - cropW) / 2;
-                    const cropY = (vh - cropH) / 2;
-                    ctx.drawImage(el.cameraVideo, cropX, cropY, cropW, cropH, 0, 0, vw, vh);
-                } else {
-                    ctx.drawImage(el.cameraVideo, 0, 0, vw, vh);
+    function grabZoomAdjustedFrame(ctx, vw, vh) {
+        if (state.currentZoom > 1.0) {
+            const cropW = vw / state.currentZoom;
+            const cropH = vh / state.currentZoom;
+            const cropX = (vw - cropW) / 2;
+            const cropY = (vh - cropH) / 2;
+            ctx.drawImage(el.cameraVideo, cropX, cropY, cropW, cropH, 0, 0, vw, vh);
+        } else {
+            ctx.drawImage(el.cameraVideo, 0, 0, vw, vh);
+        }
+    }
+
+    async function captureBurstAveragedCanvas() {
+        const vw = el.cameraVideo.videoWidth;
+        const vh = el.cameraVideo.videoHeight;
+
+        const grabCanvas = document.createElement('canvas');
+        grabCanvas.width = vw;
+        grabCanvas.height = vh;
+        const grabCtx = grabCanvas.getContext('2d', { willReadFrequently: true });
+
+        const accum = new Float64Array(vw * vh * 3); // R,G,B sums (skip alpha)
+        let framesGrabbed = 0;
+
+        for (let f = 0; f < BURST_FRAME_COUNT; f++) {
+            grabZoomAdjustedFrame(grabCtx, vw, vh);
+            const frame = grabCtx.getImageData(0, 0, vw, vh).data;
+            for (let i = 0, p = 0; i < frame.length; i += 4, p += 3) {
+                accum[p] += frame[i];
+                accum[p + 1] += frame[i + 1];
+                accum[p + 2] += frame[i + 2];
+            }
+            framesGrabbed++;
+            if (f < BURST_FRAME_COUNT - 1) {
+                await new Promise(resolve => setTimeout(resolve, BURST_INTERVAL_MS));
+            }
+        }
+
+        const outCanvas = document.createElement('canvas');
+        outCanvas.width = vw;
+        outCanvas.height = vh;
+        const outCtx = outCanvas.getContext('2d');
+        const outImgData = outCtx.createImageData(vw, vh);
+        for (let i = 0, p = 0; i < outImgData.data.length; i += 4, p += 3) {
+            outImgData.data[i] = accum[p] / framesGrabbed;
+            outImgData.data[i + 1] = accum[p + 1] / framesGrabbed;
+            outImgData.data[i + 2] = accum[p + 2] / framesGrabbed;
+            outImgData.data[i + 3] = 255;
+        }
+        outCtx.putImageData(outImgData, 0, 0);
+        return outCanvas;
+    }
+
+    if (el.btnCapture) {
+        el.btnCapture.addEventListener('click', async () => {
+            let canvas;
+
+            if (state.stream && el.cameraVideo && el.cameraVideo.videoWidth > 0) {
+                const originalLabel = el.btnCapture.textContent;
+                el.btnCapture.disabled = true;
+                el.btnCapture.textContent = '촬영 중...';
+                const instructionEl = document.querySelector('.guide-instruction-text');
+                const originalInstruction = instructionEl ? instructionEl.textContent : null;
+                if (instructionEl) instructionEl.textContent = '움직이지 마세요 (노이즈 제거 중)';
+
+                try {
+                    canvas = await captureBurstAveragedCanvas();
+                } finally {
+                    el.btnCapture.disabled = false;
+                    el.btnCapture.textContent = originalLabel;
+                    if (instructionEl && originalInstruction !== null) instructionEl.textContent = originalInstruction;
                 }
             } else if (typeof LFATestSamples !== 'undefined' && LFATestSamples.createSyntheticKit) {
                 canvas = LFATestSamples.createSyntheticKit({ cLine: 0.88, tLine: 0.45, noise: 0.02 });
