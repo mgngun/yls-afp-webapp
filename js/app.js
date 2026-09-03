@@ -790,65 +790,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function cropStripFromCapturedCanvas() {
-        if (!state.capturedCanvas) return null;
-        const srcCanvas = state.capturedCanvas;
-        const imgW = srcCanvas.width;
-        const imgH = srcCanvas.height;
-
-        const contEl = document.querySelector('.confirm-photo-area') ||
-            document.querySelector('.camera-container') ||
-            document.body;
-        const winEl = document.getElementById('confirm-guide-window') ||
-            document.querySelector('.guide-window-cutout');
-
-        const rectCont = contEl ? contEl.getBoundingClientRect() : { left: 0, top: 0, width: 360, height: 640 };
-        const rectWin = winEl ? winEl.getBoundingClientRect() : null;
-
-        const dispW = rectCont.width || 360;
-        const dispH = rectCont.height || 640;
-
-        let winX, winY, winW, winH;
-
-        if (rectWin && rectWin.width > 0 && rectWin.height > 0) {
-            winX = rectWin.left - rectCont.left;
-            winY = rectWin.top - rectCont.top;
-            winW = rectWin.width;
-            winH = rectWin.height;
-        } else {
-            const fW = Math.round(dispW / 3);
-            const fTop = Math.round(fW / 2);
-            const fLeft = Math.round((dispW - fW) / 2);
-            winW = Math.round(fW / 3);
-            winH = Math.round(fW * 2 / 3);
-            winX = fLeft + Math.round((fW - winW) / 2);
-            winY = fTop + Math.round(fW * 4 / 3);
-        }
-
-        const scale = Math.max(dispW / imgW, dispH / imgH);
-        const renderW = imgW * scale;
-        const renderH = imgH * scale;
-        const offsetX = (dispW - renderW) / 2;
-        const offsetY = (dispH - renderH) / 2;
-
-        let realX = Math.round((winX - offsetX) / scale);
-        let realY = Math.round((winY - offsetY) / scale);
-        let realW = Math.round(winW / scale);
-        let realH = Math.round(winH / scale);
-
-        realX = Math.max(0, Math.min(imgW - 10, realX));
-        realY = Math.max(0, Math.min(imgH - 10, realY));
-        realW = Math.max(10, Math.min(imgW - realX, realW));
-        realH = Math.max(10, Math.min(imgH - realY, realH));
-
-        const cropCanvas = document.createElement('canvas');
-        cropCanvas.width = realW;
-        cropCanvas.height = realH;
-        const cCtx = cropCanvas.getContext('2d');
-        cCtx.drawImage(srcCanvas, realX, realY, realW, realH, 0, 0, realW, realH);
-
-        return cropCanvas;
-    }
+    // 참고: 과거에는 화면에 그려진 가이드 사각형(DOM 좌표)을 이미지 좌표로
+    // 역산하여 그 사각형만큼 그대로 잘라내는 방식(사용자의 정렬 정확도에
+    // 전적으로 의존)을 사용했다. 이는 정렬이 조금만 어긋나도 멤브레인 영역이
+    // 잘못 잘리는 문제가 있었다.
+    //
+    // 이제는 촬영된 원본 프레임 전체를 LFAAnalyzer로 전달하고, 실제 이미지의
+    // 에지(경계선)·명암 대비·원형 주입구 형태를 분석하여 키트 외곽 검출 →
+    // 원근 보정(rectify) → 멤브레인 창 위치 자동 검출까지 전부 이미지 처리
+    // 알고리즘이 수행한다 (자세한 내용은 lfa_analyzer.js 참고). 화면 가이드는
+    // 사용자가 키트를 프레임 안에 대략 담도록 돕는 시각적 보조 수단으로만
+    // 남겨둔다.
 
     if (el.btnBackFromCamera) {
         el.btnBackFromCamera.addEventListener('click', () => {
@@ -883,19 +835,18 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 if (!state.analyzer) state.analyzer = new LFAAnalyzer();
 
-                const croppedStrip = cropStripFromCapturedCanvas() || state.capturedCanvas;
-
-                const result = await state.analyzer.analyze(croppedStrip, { isPreCropped: true });
-                if (result.visualData) {
-                    result.visualData.stripCanvas = croppedStrip;
-                    result.visualData.previewCanvas = croppedStrip;
-                }
+                // 원본 촬영 프레임 전체를 전달 — 키트 검출/원근보정/멤브레인
+                // 창 위치 검출을 모두 analyzer가 이미지 처리로 직접 수행한다.
+                const result = await state.analyzer.analyze(state.capturedCanvas, { isPreCropped: false });
                 state.lastAnalysisResult = result;
 
-                const savedRecord = saveResultRecord(result, croppedStrip);
+                // 저장용 크롭 이미지는 analyzer가 실제로 검출한 멤브레인 창
+                // 미리보기(stripCanvas/previewCanvas)를 그대로 사용한다.
+                const savedRecord = saveResultRecord(result);
 
                 try {
-                    const cropUrl = savedRecord?.cropImageDataUrl || croppedStrip.toDataURL('image/jpeg', 0.85);
+                    const fallbackCanvas = result.visualData?.stripCanvas || result.visualData?.previewCanvas || state.capturedCanvas;
+                    const cropUrl = savedRecord?.cropImageDataUrl || fallbackCanvas.toDataURL('image/jpeg', 0.85);
                     if (state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
                         state.sheetsSync.syncResult(
                             result,
