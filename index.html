@@ -7,7 +7,7 @@
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>YLS - AFP Testing for Cancer | LFA 스마트폰 AI 진단</title>
     <meta name="description" content="YLS AFP Testing for Cancer - LFA 스마트폰 카메라 AI 진단 웹앱">
-    <link rel="stylesheet" href="css/style.css?v=4.4.4">
+    <link rel="stylesheet" href="css/style.css?v=4.4.5">
     <!-- Login 화면의 사용자 추가 버튼용 Noto Sans KR -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -195,6 +195,8 @@
 
                 <div class="confirm-photo-area">
                     <canvas id="confirm-preview-canvas"></canvas>
+                    <canvas id="detection-overlay-canvas" class="detection-overlay-canvas"></canvas>
+                    <div class="detection-status" id="detection-status"></div>
                     <div class="confirm-guide-overlay">
                         <div class="confirm-kit-frame" id="confirm-kit-frame">
                             <div class="confirm-guide-window" id="confirm-guide-window"></div>
@@ -421,10 +423,11 @@
 
     <!-- Scripts -->
     <script src="js/test_samples.js?v=4.4.4"></script>
+    <script src="js/kit_detector.js?v=4.4.5"></script>
     <script src="js/lfa_analyzer.js?v=4.4.4"></script>
     <script src="js/google_sheets.js?v=4.4.4"></script>
     <script src="js/google_user_auth.js?v=1.0.2"></script>
-    <script src="js/app.js?v=4.4.4"></script>
+    <script src="js/app.js?v=4.4.5"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v3d52b47920f24c319d37e2661827c42b1787588026925" integrity="sha512-d9sL6GJLXn6fInD1+TVXhTcQOsmxeHfmHAvwGDIxp5TO+uo1fiWW7mHomMj4MLRlCsJDTqXzWLHJFFlPCEIj/A==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
 </body>
 
