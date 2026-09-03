@@ -87,17 +87,21 @@ class LFAAnalyzer {
                 stripROI = this._extractAdaptiveMembraneROI(rectifiedCanvas);
             }
             
-            // 4. Extract Multi-Channel Color Profiles (R, G, B)
-            const { rawProfile, greenProfile, multiProfiles } = this._extractColorProfiles(stripROI);
+            // 4. Extract Multi-Channel Color Profiles (R, G, B) + Segment Profiles
+            const { rawProfile, greenProfile, multiProfiles, leftProfile, rightProfile } = this._extractColorProfiles(stripROI);
             
             // 5. Multi-Channel + Multi-Scale Top-Hat Signal Extraction
             const { baseline, correctedProfile, topHatProfile } = this._compensateIlluminationRobust(greenProfile, multiProfiles);
+            
+            // 5.5. Segment Top-Hat (left/right halves for spatial consistency)
+            const leftTopHat = this._topHat1D(leftProfile, 14).topHat;
+            const rightTopHat = this._topHat1D(rightProfile, 14).topHat;
             
             // 6. Peak Detection with Weak-Line Acceptance
             const peakResults = this._detectPeaksRobust(greenProfile, correctedProfile, topHatProfile);
             
             // 6.5. Spatial Consistency Validation: reject dots/artifacts
-            this._validateSpatialConsistency(peakResults, stripROI);
+            this._validateSpatialConsistency(peakResults, stripROI, { leftTopHat, rightTopHat, fullTopHat: topHatProfile });
             
             // 7. Diagnostic Classification & Concentration
             const diagnosis = this._classifyResult(peakResults, imgData);
@@ -317,6 +321,7 @@ class LFAAnalyzer {
 
     /**
      * Extract Multi-Channel Color Profiles (R, G, B) with horizontal center weighting
+     * Also extracts left/right segment profiles for spatial consistency validation
      * Smoothing: radius=1 (3-tap) for better peak preservation
      */
     _extractColorProfiles(stripROI) {
@@ -327,13 +332,17 @@ class LFAAnalyzer {
         const gProfile = new Float32Array(height);
         const bProfile = new Float32Array(height);
         const rawProfile = new Float32Array(height);
+        const leftProfile = new Float32Array(height);
+        const rightProfile = new Float32Array(height);
 
         const xStart = Math.round(width * 0.15);
         const xEnd = Math.round(width * 0.85);
+        const xMid = Math.round((xStart + xEnd) / 2);
 
         for (let y = 0; y < height; y++) {
-            const srcY = height - 1 - y; // Bottom = 0 in flow profile
+            const srcY = height - 1 - y;
             let sumR = 0, sumG = 0, sumB = 0, sumGray = 0, weightSum = 0;
+            let sumL = 0, sumR_half = 0, wL = 0, wR = 0;
             for (let x = xStart; x < xEnd; x++) {
                 const normX = (x - xStart) / (xEnd - xStart) - 0.5;
                 const weight = Math.cos(normX * Math.PI);
@@ -348,11 +357,22 @@ class LFAAnalyzer {
                 sumB += b * weight;
                 sumGray += (0.299 * r + 0.587 * g + 0.114 * b) * weight;
                 weightSum += weight;
+                
+                // Left/right segment profiles (simple average, no weighting)
+                if (x < xMid) {
+                    sumL += g;
+                    wL++;
+                } else {
+                    sumR_half += g;
+                    wR++;
+                }
             }
             rProfile[y] = sumR / weightSum;
             gProfile[y] = sumG / weightSum;
             bProfile[y] = sumB / weightSum;
             rawProfile[y] = sumGray / weightSum;
+            leftProfile[y] = sumL / wL;
+            rightProfile[y] = sumR_half / wR;
         }
 
         // Light smoothing: radius=1 (3-tap) to preserve peak height
@@ -360,11 +380,15 @@ class LFAAnalyzer {
         const smoothG = this._smooth1D(gProfile, 1);
         const smoothB = this._smooth1D(bProfile, 1);
         const smoothGray = this._smooth1D(rawProfile, 1);
+        const smoothLeft = this._smooth1D(leftProfile, 1);
+        const smoothRight = this._smooth1D(rightProfile, 1);
 
         return { 
             rawProfile: smoothGray, 
             greenProfile: smoothG,
-            multiProfiles: { r: smoothR, g: smoothG, b: smoothB }
+            multiProfiles: { r: smoothR, g: smoothG, b: smoothB },
+            leftProfile: smoothLeft,
+            rightProfile: smoothRight
         };
     }
 
@@ -698,116 +722,112 @@ class LFAAnalyzer {
     /**
      * Spatial Consistency Validation: Reject dots, specks, and localized artifacts
      * 
-     * A real LFA line is a horizontal band spanning most of the membrane width.
-     * A dot or speck is a localized dark spot affecting only a small portion.
+     * Uses LEFT/RIGHT segment profile consistency:
+     * - A real LFA line spans the full membrane width → appears in BOTH left and right profiles
+     * - A dot/speck is localized → appears in only ONE half's profile
      * 
-     * Checks:
-     * 1. Horizontal coverage: dark pixels at peak row must cover >= 25% of width
-     * 2. Left-right consistency: peak must appear in both left and right halves
-     * 3. Multi-row consistency: peak must appear in >= 2 of 3 consecutive rows
+     * Also uses pixel-level horizontal coverage as secondary check.
      */
-    _validateSpatialConsistency(peakResults, stripROI) {
+    _validateSpatialConsistency(peakResults, stripROI, segmentData) {
         const { imgData, width, height } = stripROI;
         const data = imgData.data;
+        const { leftTopHat, rightTopHat, fullTopHat } = segmentData;
         
         const xStart = Math.round(width * 0.15);
         const xEnd = Math.round(width * 0.85);
-        const scanWidth = xEnd - xStart;
         
         for (const lineKey of ['cLine', 'tLine']) {
             const line = peakResults[lineKey];
             if (!line.detected || line.index < 0) continue;
             
-            // Convert flow profile index to image y (bottom = 0 in flow)
-            const peakY = height - 1 - line.index;
-            if (peakY < 0 || peakY >= height) continue;
+            const peakIdx = line.index;
+            const fullHeight = fullTopHat[peakIdx] || 0;
             
-            // Extract grayscale values at peak row and neighbors
-            const rowsToCheck = [peakY - 1, peakY, peakY + 1].filter(y => y >= 0 && y < height);
+            // === CHECK 1: Left/Right Segment Consistency ===
+            // A real line appears in both left and right half-profiles.
+            // A dot only appears in the half where it's located.
+            const leftVal = leftTopHat[peakIdx] || 0;
+            const rightVal = rightTopHat[peakIdx] || 0;
             
-            let maxCoverage = 0;
-            let consistentRows = 0;
-            let leftRightConsistent = true;
+            // For a real line: both segments should have >= 40% of the full-width signal
+            // For a dot: one segment has most of the signal, the other has almost none
+            const leftRatio = fullHeight > 0 ? leftVal / fullHeight : 0;
+            const rightRatio = fullHeight > 0 ? rightVal / fullHeight : 0;
             
-            for (const rowY of rowsToCheck) {
-                // Extract pixel values for this row
+            // Also check neighborhood (±2 pixels) for robustness
+            let leftMax = 0, rightMax = 0;
+            for (let k = -2; k <= 2; k++) {
+                const idx = peakIdx + k;
+                if (idx >= 0 && idx < leftTopHat.length) {
+                    if (leftTopHat[idx] > leftMax) leftMax = leftTopHat[idx];
+                    if (rightTopHat[idx] > rightMax) rightMax = rightTopHat[idx];
+                }
+            }
+            const leftMaxRatio = fullHeight > 0 ? leftMax / fullHeight : 0;
+            const rightMaxRatio = fullHeight > 0 ? rightMax / fullHeight : 0;
+            
+            // The weaker half must have at least 30% of the full-width signal
+            // This rejects dots that only appear in one half
+            const minSegmentRatio = 0.30;
+            
+            // Use the max in neighborhood (more robust to slight position shifts)
+            const weakerMaxRatio = Math.min(leftMaxRatio, rightMaxRatio);
+            
+            // === CHECK 2: Pixel-level horizontal coverage ===
+            // At the peak row, count dark pixels across the width
+            const srcY = height - 1 - peakIdx;
+            let coverage = 0;
+            if (srcY >= 0 && srcY < height) {
                 const values = [];
                 for (let x = xStart; x < xEnd; x++) {
-                    const idx = (rowY * width + x) * 4;
+                    const idx = (srcY * width + x) * 4;
                     const gray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
                     values.push(gray);
                 }
-                
-                // Find median (background level)
                 const sorted = [...values].sort((a, b) => a - b);
                 const median = sorted[Math.floor(sorted.length / 2)];
                 
-                // Compute expected drop: topHat value * baseline
+                // Compute IQR for noise estimation
+                const q1 = sorted[Math.floor(sorted.length * 0.25)];
+                const q3 = sorted[Math.floor(sorted.length * 0.75)];
+                const iqr = q3 - q1;
+                const noiseSigma = Math.max(iqr / 1.349, 1.0);
+                
+                // Threshold: median - max(2*noise, 5 pixels, 50% of expected drop)
                 const rawDrop = line.height * (median || 200);
+                const threshold = median - Math.max(noiseSigma * 2, 5, rawDrop * 0.5);
                 
-                if (rawDrop <= 0) continue;
-                
-                // Threshold: pixels darker than median - 30% of drop
-                const threshold = median - rawDrop * 0.3;
-                
-                // Count dark pixels (horizontal coverage)
                 let darkCount = 0;
-                let leftDark = 0, rightDark = 0;
-                const halfWidth = Math.floor(scanWidth / 2);
-                for (let i = 0; i < values.length; i++) {
-                    if (values[i] < threshold) {
-                        darkCount++;
-                        if (i < halfWidth) leftDark++;
-                        else rightDark++;
-                    }
+                for (const v of values) {
+                    if (v < threshold) darkCount++;
                 }
-                
-                const coverage = darkCount / values.length;
-                if (coverage > maxCoverage) maxCoverage = coverage;
-                
-                // Check if dark pixels span both halves
-                const leftCov = leftDark / halfWidth;
-                const rightCov = rightDark / (values.length - halfWidth);
-                if (leftCov < 0.10 || rightCov < 0.10) {
-                    leftRightConsistent = false;
-                }
-                
-                // Row is consistent if coverage >= 20%
-                if (coverage >= 0.20) consistentRows++;
+                coverage = darkCount / values.length;
             }
             
-            // Validation criteria:
-            // 1. Max horizontal coverage across rows must be >= 25%
-            // 2. Must be consistent in >= 2 of 3 rows (or all rows checked)
-            // 3. Left-right consistency: dark pixels must appear in both halves
-            const minCoverage = 0.25;
-            const minConsistentRows = Math.max(2, Math.ceil(rowsToCheck.length * 0.6));
+            line.horizontalCoverage = Math.round(coverage * 100) / 100;
+            line.leftSegmentRatio = Math.round(leftMaxRatio * 100) / 100;
+            line.rightSegmentRatio = Math.round(rightMaxRatio * 100) / 100;
             
-            if (maxCoverage < minCoverage) {
+            // === DECISION ===
+            // Reject if:
+            // 1. Weaker segment has < 30% of full signal → localized artifact (dot in one half)
+            // 2. OR pixel coverage < 20% AND weaker segment < 50% → small dot
+            // 3. OR pixel coverage < 10% → very small artifact
+            
+            if (weakerMaxRatio < minSegmentRatio) {
                 line.detected = false;
-                line.rejectedReason = 'insufficient_horizontal_coverage';
-                line.horizontalCoverage = Math.round(maxCoverage * 100) / 100;
-            } else if (consistentRows < minConsistentRows) {
+                line.rejectedReason = 'segment_inconsistent';
+            } else if (coverage < 0.10) {
                 line.detected = false;
-                line.rejectedReason = 'inconsistent_across_rows';
-                line.horizontalCoverage = Math.round(maxCoverage * 100) / 100;
-            } else if (!leftRightConsistent && maxCoverage < 0.40) {
+                line.rejectedReason = 'insufficient_coverage';
+            } else if (coverage < 0.20 && weakerMaxRatio < 0.50) {
                 line.detected = false;
-                line.rejectedReason = 'left_right_inconsistent';
-                line.horizontalCoverage = Math.round(maxCoverage * 100) / 100;
-            } else {
-                line.horizontalCoverage = Math.round(maxCoverage * 100) / 100;
+                line.rejectedReason = 'localized_artifact';
             }
         }
         
-        // Recompute SNR and tcRatio after spatial validation
-        if (peakResults.cLine.detected && peakResults.tLine.detected) {
-            // Both still detected — keep tcRatio
-        } else if (!peakResults.cLine.detected && peakResults.tLine.detected) {
-            // C-line rejected but T-line still detected — T-line alone is meaningless
-            // (T-line without C-line = invalid test)
-        } else if (peakResults.cLine.detected && !peakResults.tLine.detected) {
-            // T-line rejected — update tcRatio
+        // Update tcRatio after spatial validation
+        if (!peakResults.tLine.detected) {
             peakResults.tcRatio = 0;
             peakResults.relativeRatio = 0;
         }
