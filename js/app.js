@@ -30,6 +30,8 @@ document.addEventListener('DOMContentLoaded', () => {
         stream: null,
         capturedCanvas: null,
         analyzer: typeof LFAAnalyzer === 'function' ? new LFAAnalyzer() : null,
+        kitDetector: typeof KitDetector === 'function' ? new KitDetector() : null,
+        detectionResult: null,
         sheetsSync: typeof GoogleSheetsSync === 'function' ? new GoogleSheetsSync() : null,
         activeView: 'view-login',
         lastAnalysisResult: null,
@@ -115,6 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
         cameraContainer: document.querySelector('.camera-container'),
         // Confirm
         confirmCanvas: document.getElementById('confirm-preview-canvas'),
+        detectionOverlayCanvas: document.getElementById('detection-overlay-canvas'),
+        detectionStatus: document.getElementById('detection-status'),
         btnConfirmNo: document.getElementById('btn-confirm-no'),
         btnConfirmYes: document.getElementById('btn-confirm-yes'),
         // Results
@@ -249,6 +253,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 applyStyle(cFrame, { width: m.fW + 'px', height: m.fH + 'px', top: m.fTop + 'px', left: m.fLeft + 'px', transform: 'none' });
                 applyStyle(cWin, { width: m.sW + 'px', height: m.sH + 'px', left: m.sLeft + 'px', top: m.sTop + 'px', transform: 'none' });
                 applyStyle(cWell, { width: m.wDiam + 'px', height: m.wDiam + 'px', left: m.wLeft + 'px', top: m.wTop + 'px', transform: 'none' });
+                // 자동 키트 검출 실행
+                runKitDetection();
             }, 50);
         }
     }
@@ -751,90 +757,26 @@ document.addEventListener('DOMContentLoaded', () => {
         Object.assign(el.style, styles);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Burst-average capture: grabs several frames in rapid succession and
-    // pixel-averages them BEFORE any analysis. Random camera sensor/read noise
-    // averages down by roughly sqrt(N) across N frames, while the real strip
-    // image (line included) stays the same — so a faint T-line that sits just
-    // below the noise floor in any single frame becomes reliably visible in
-    // the averaged image. This is a hardware-level SNR improvement that no
-    // amount of post-processing on one photo alone can recover, and it works
-    // silently in the background during the normal capture button press.
-    // ─────────────────────────────────────────────────────────────
-    const BURST_FRAME_COUNT = 6;
-    const BURST_INTERVAL_MS = 30; // total burst window ~150-180ms — short enough that normal hand tremor is sub-pixel
-
-    function grabZoomAdjustedFrame(ctx, vw, vh) {
-        if (state.currentZoom > 1.0) {
-            const cropW = vw / state.currentZoom;
-            const cropH = vh / state.currentZoom;
-            const cropX = (vw - cropW) / 2;
-            const cropY = (vh - cropH) / 2;
-            ctx.drawImage(el.cameraVideo, cropX, cropY, cropW, cropH, 0, 0, vw, vh);
-        } else {
-            ctx.drawImage(el.cameraVideo, 0, 0, vw, vh);
-        }
-    }
-
-    async function captureBurstAveragedCanvas() {
-        const vw = el.cameraVideo.videoWidth;
-        const vh = el.cameraVideo.videoHeight;
-
-        const grabCanvas = document.createElement('canvas');
-        grabCanvas.width = vw;
-        grabCanvas.height = vh;
-        const grabCtx = grabCanvas.getContext('2d', { willReadFrequently: true });
-
-        const accum = new Float64Array(vw * vh * 3); // R,G,B sums (skip alpha)
-        let framesGrabbed = 0;
-
-        for (let f = 0; f < BURST_FRAME_COUNT; f++) {
-            grabZoomAdjustedFrame(grabCtx, vw, vh);
-            const frame = grabCtx.getImageData(0, 0, vw, vh).data;
-            for (let i = 0, p = 0; i < frame.length; i += 4, p += 3) {
-                accum[p] += frame[i];
-                accum[p + 1] += frame[i + 1];
-                accum[p + 2] += frame[i + 2];
-            }
-            framesGrabbed++;
-            if (f < BURST_FRAME_COUNT - 1) {
-                await new Promise(resolve => setTimeout(resolve, BURST_INTERVAL_MS));
-            }
-        }
-
-        const outCanvas = document.createElement('canvas');
-        outCanvas.width = vw;
-        outCanvas.height = vh;
-        const outCtx = outCanvas.getContext('2d');
-        const outImgData = outCtx.createImageData(vw, vh);
-        for (let i = 0, p = 0; i < outImgData.data.length; i += 4, p += 3) {
-            outImgData.data[i] = accum[p] / framesGrabbed;
-            outImgData.data[i + 1] = accum[p + 1] / framesGrabbed;
-            outImgData.data[i + 2] = accum[p + 2] / framesGrabbed;
-            outImgData.data[i + 3] = 255;
-        }
-        outCtx.putImageData(outImgData, 0, 0);
-        return outCanvas;
-    }
-
     if (el.btnCapture) {
-        el.btnCapture.addEventListener('click', async () => {
+        el.btnCapture.addEventListener('click', () => {
             let canvas;
-
             if (state.stream && el.cameraVideo && el.cameraVideo.videoWidth > 0) {
-                const originalLabel = el.btnCapture.textContent;
-                el.btnCapture.disabled = true;
-                el.btnCapture.textContent = '촬영 중...';
-                const instructionEl = document.querySelector('.guide-instruction-text');
-                const originalInstruction = instructionEl ? instructionEl.textContent : null;
-                if (instructionEl) instructionEl.textContent = '움직이지 마세요 (노이즈 제거 중)';
+                const vw = el.cameraVideo.videoWidth;
+                const vh = el.cameraVideo.videoHeight;
+                canvas = document.createElement('canvas');
+                canvas.width = vw;
+                canvas.height = vh;
+                const ctx = canvas.getContext('2d');
 
-                try {
-                    canvas = await captureBurstAveragedCanvas();
-                } finally {
-                    el.btnCapture.disabled = false;
-                    el.btnCapture.textContent = originalLabel;
-                    if (instructionEl && originalInstruction !== null) instructionEl.textContent = originalInstruction;
+                // Software Fallback Zoom이 사용되었을 경우 Canvas 크롭 영역 매핑
+                if (state.currentZoom > 1.0) {
+                    const cropW = vw / state.currentZoom;
+                    const cropH = vh / state.currentZoom;
+                    const cropX = (vw - cropW) / 2;
+                    const cropY = (vh - cropH) / 2;
+                    ctx.drawImage(el.cameraVideo, cropX, cropY, cropW, cropH, 0, 0, vw, vh);
+                } else {
+                    ctx.drawImage(el.cameraVideo, 0, 0, vw, vh);
                 }
             } else if (typeof LFATestSamples !== 'undefined' && LFATestSamples.createSyntheticKit) {
                 canvas = LFATestSamples.createSyntheticKit({ cLine: 0.88, tLine: 0.45, noise: 0.02 });
@@ -844,11 +786,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             state.capturedCanvas = canvas;
+            state.detectionResult = null;
 
             if (el.confirmCanvas) {
                 el.confirmCanvas.width = canvas.width;
                 el.confirmCanvas.height = canvas.height;
                 el.confirmCanvas.getContext('2d').drawImage(canvas, 0, 0);
+            }
+            if (el.detectionOverlayCanvas) {
+                el.detectionOverlayCanvas.width = canvas.width;
+                el.detectionOverlayCanvas.height = canvas.height;
+                el.detectionOverlayCanvas.classList.remove('visible');
+            }
+            if (el.detectionStatus) {
+                el.detectionStatus.textContent = '';
+                el.detectionStatus.className = 'detection-status';
             }
             navigateTo('confirm');
         });
@@ -914,6 +866,85 @@ document.addEventListener('DOMContentLoaded', () => {
         return cropCanvas;
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // KIT DETECTION (자동 키트 검출)
+    // ─────────────────────────────────────────────────────────────
+    async function runKitDetection() {
+        if (!state.kitDetector || !state.capturedCanvas) return;
+
+        const overlay = el.detectionOverlayCanvas;
+        const status = el.detectionStatus;
+
+        // 검출 중 상태 표시
+        if (status) {
+            status.textContent = '키트 자동 검출 중...';
+            status.className = 'detection-status detecting';
+        }
+
+        try {
+            const result = await state.kitDetector.detect(state.capturedCanvas);
+            state.detectionResult = result;
+
+            if (result.success) {
+                // 검출 성공: 검출 결과 시각화
+                drawDetectionOverlay(result);
+                if (status) {
+                    const pct = Math.round(result.confidence * 100);
+                    const orient = result.orientation === 'normal' ? '정방향' : '180° 회전';
+                    status.textContent = `검출 완료 (${pct}%) · ${orient}`;
+                    status.className = 'detection-status success';
+                }
+                // guide overlay 숨기기
+                const guideOverlay = document.querySelector('.confirm-guide-overlay');
+                if (guideOverlay) guideOverlay.style.display = 'none';
+            } else {
+                // 검출 실패: guide overlay 유지 (fallback)
+                if (overlay) overlay.classList.remove('visible');
+                if (status) {
+                    const reason = result.errorReason || 'unknown';
+                    status.textContent = `자동 검출 실패 (${reason}) · 수동 정렬 사용`;
+                    status.className = 'detection-status fallback';
+                }
+            }
+        } catch (e) {
+            console.error('[KitDetection] error:', e);
+            if (status) {
+                status.textContent = '자동 검출 오류 · 수동 정렬 사용';
+                status.className = 'detection-status fallback';
+            }
+        }
+    }
+
+    function drawDetectionOverlay(detection) {
+        const overlay = el.detectionOverlayCanvas;
+        if (!overlay || !state.capturedCanvas) return;
+
+        const ctx = overlay.getContext('2d');
+        const W = state.capturedCanvas.width;
+        const H = state.capturedCanvas.height;
+        ctx.clearRect(0, 0, W, H);
+
+        state.kitDetector.drawDetection(overlay, detection);
+        overlay.classList.add('visible');
+    }
+
+    function getStripCanvas() {
+        // 1. 자동 검출 성공 시 원근 보정된 strip 반환
+        if (state.detectionResult && state.detectionResult.success && state.kitDetector) {
+            try {
+                const rectified = state.kitDetector.rectifyWindow(
+                    state.capturedCanvas,
+                    state.detectionResult
+                );
+                if (rectified) return rectified;
+            } catch (e) {
+                console.warn('[KitDetection] rectify failed, fallback to manual crop:', e);
+            }
+        }
+        // 2. Fallback: 기존 수동 crop 방식
+        return cropStripFromCapturedCanvas();
+    }
+
     if (el.btnBackFromCamera) {
         el.btnBackFromCamera.addEventListener('click', () => {
             stopCamera();
@@ -924,6 +955,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el.btnBackFromConfirm) {
         el.btnBackFromConfirm.addEventListener('click', () => {
             state.capturedCanvas = null;
+            state.detectionResult = null;
             navigateTo('camera');
         });
     }
@@ -934,6 +966,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el.btnConfirmNo) {
         el.btnConfirmNo.addEventListener('click', () => {
             state.capturedCanvas = null;
+            state.detectionResult = null;
             navigateTo('camera');
         });
     }
@@ -947,7 +980,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 if (!state.analyzer) state.analyzer = new LFAAnalyzer();
 
-                const croppedStrip = cropStripFromCapturedCanvas() || state.capturedCanvas;
+                const croppedStrip = getStripCanvas() || state.capturedCanvas;
 
                 const result = await state.analyzer.analyze(croppedStrip, { isPreCropped: true });
                 if (result.visualData) {
