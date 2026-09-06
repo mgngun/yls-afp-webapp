@@ -20,27 +20,27 @@ class LFAAnalyzer {
             // Along fluidics flow direction (0.0: Sample Inlet/Bottom, 1.0: Absorption Pad/Top)
             tLinePosRatio: 0.32,   // Test Line (~32% along flow)
             cLinePosRatio: 0.76,   // Control Line (~76% along flow)
-            peakTolerance: 0.15,   // Search window around expected peak (±15%)
+            peakTolerance: 0.16,   // Search window around expected peak (±16%)
             
             // Peak geometry requirements
             minPeakFWHM: 3,
             maxPeakFWHM: 40,
-            minLocalProminence: 0.003,
+            minLocalProminence: 0.0025,
             
             // Statistical noise gate
-            minCProminenceSigma: 3.5,
-            minTProminenceSigma: 3.0,
+            minCProminenceSigma: 3.0,
+            minTProminenceSigma: 2.5,
             
-            // Weak C-line acceptance: 다중 기준 충족 시 낮은 절대값도 허용
-            absoluteMinCPeak: 0.020,       // Standard threshold
-            weakCMinPeak: 0.012,           // Weak threshold (다중 검증 필요)
-            weakCMinSNR: 8.0,              // Weak C-line requires SNR >= 8
-            absoluteMinTPeak: 0.009,
-            weakTMinPeak: 0.006,
-            weakTMinSNR: 6.0,
+            // Weak C-line & T-line acceptance
+            absoluteMinCPeak: 0.015,       // Standard threshold
+            weakCMinPeak: 0.008,           // Weak threshold
+            weakCMinSNR: 5.0,              // Weak C-line requires SNR >= 5
+            absoluteMinTPeak: 0.008,
+            weakTMinPeak: 0.0045,
+            weakTMinSNR: 4.0,
             
             // T/C ratio
-            minTCRatio: 0.08,
+            minTCRatio: 0.03,
             
             // Multi-scale top-hat kernel sizes
             topHatKernels: [8, 14, 22],
@@ -49,7 +49,7 @@ class LFAAnalyzer {
             calibration: {
                 a: 0.05,
                 b: 0.25,
-                unit: 'mg/dL'
+                unit: 'ng/dL'
             },
             
             ...config
@@ -698,121 +698,110 @@ class LFAAnalyzer {
     /**
      * Spatial Consistency Validation: Reject dots, specks, and localized artifacts
      * 
-     * A real LFA line is a horizontal band spanning most of the membrane width.
-     * A dot or speck is a localized dark spot affecting only a small portion.
-     * 
-     * Checks:
-     * 1. Horizontal coverage: dark pixels at peak row must cover >= 25% of width
-     * 2. Left-right consistency: peak must appear in both left and right halves
-     * 3. Multi-row consistency: peak must appear in >= 2 of 3 consecutive rows
+     * Compares peak row pixel intensities to surrounding membrane background.
+     * Prevents false positives from single-sided specks without rejecting true uniform bands.
      */
     _validateSpatialConsistency(peakResults, stripROI) {
+        if (!stripROI || !stripROI.imgData) return;
         const { imgData, width, height } = stripROI;
         const data = imgData.data;
         
-        const xStart = Math.round(width * 0.15);
-        const xEnd = Math.round(width * 0.85);
-        const scanWidth = xEnd - xStart;
+        const xStart = Math.round(width * 0.12);
+        const xEnd = Math.round(width * 0.88);
+        const xMid = Math.round((xStart + xEnd) / 2);
         
         for (const lineKey of ['cLine', 'tLine']) {
             const line = peakResults[lineKey];
-            if (!line.detected || line.index < 0) continue;
+            if (!line || !line.detected || line.index < 0) continue;
             
             // Convert flow profile index to image y (bottom = 0 in flow)
             const peakY = height - 1 - line.index;
-            if (peakY < 0 || peakY >= height) continue;
+            if (peakY < 2 || peakY >= height - 2) continue;
             
-            // Extract grayscale values at peak row and neighbors
-            const rowsToCheck = [peakY - 1, peakY, peakY + 1].filter(y => y >= 0 && y < height);
-            
-            let maxCoverage = 0;
-            let consistentRows = 0;
-            let leftRightConsistent = true;
-            
-            for (const rowY of rowsToCheck) {
-                // Extract pixel values for this row
-                const values = [];
-                for (let x = xStart; x < xEnd; x++) {
-                    const idx = (rowY * width + x) * 4;
-                    const gray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-                    values.push(gray);
-                }
-                
-                // Find median (background level)
-                const sorted = [...values].sort((a, b) => a - b);
-                const median = sorted[Math.floor(sorted.length / 2)];
-                
-                // Compute expected drop: topHat value * baseline
-                const rawDrop = line.height * (median || 200);
-                
-                if (rawDrop <= 0) continue;
-                
-                // Threshold: pixels darker than median - 30% of drop
-                const threshold = median - rawDrop * 0.3;
-                
-                // Count dark pixels (horizontal coverage)
-                let darkCount = 0;
-                let leftDark = 0, rightDark = 0;
-                const halfWidth = Math.floor(scanWidth / 2);
-                for (let i = 0; i < values.length; i++) {
-                    if (values[i] < threshold) {
-                        darkCount++;
-                        if (i < halfWidth) leftDark++;
-                        else rightDark++;
-                    }
-                }
-                
-                const coverage = darkCount / values.length;
-                if (coverage > maxCoverage) maxCoverage = coverage;
-                
-                // Check if dark pixels span both halves
-                const leftCov = leftDark / halfWidth;
-                const rightCov = rightDark / (values.length - halfWidth);
-                if (leftCov < 0.10 || rightCov < 0.10) {
-                    leftRightConsistent = false;
-                }
-                
-                // Row is consistent if coverage >= 20%
-                if (coverage >= 0.20) consistentRows++;
+            // If the signal is very strong and clearly defined, it is definitely a valid line
+            if (line.height >= 0.025 && line.fwhm >= 3) {
+                line.horizontalCoverage = 1.0;
+                continue;
             }
             
-            // Validation criteria:
-            // 1. Max horizontal coverage across rows must be >= 25%
-            // 2. Must be consistent in >= 2 of 3 rows (or all rows checked)
-            // 3. Left-right consistency: dark pixels must appear in both halves
-            const minCoverage = 0.25;
-            const minConsistentRows = Math.max(2, Math.ceil(rowsToCheck.length * 0.6));
+            // Background reference rows (above and below the peak FWHM zone)
+            const offset = Math.max(5, Math.round(line.fwhm * 1.2));
+            const bgRows = [
+                Math.max(0, peakY - offset),
+                Math.min(height - 1, peakY + offset)
+            ];
             
-            if (maxCoverage < minCoverage) {
+            let bgSumLeft = 0, bgCountLeft = 0;
+            let bgSumRight = 0, bgCountRight = 0;
+            
+            for (const bgY of bgRows) {
+                for (let x = xStart; x < xMid; x++) {
+                    const idx = (bgY * width + x) * 4;
+                    bgSumLeft += 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+                    bgCountLeft++;
+                }
+                for (let x = xMid; x < xEnd; x++) {
+                    const idx = (bgY * width + x) * 4;
+                    bgSumRight += 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+                    bgCountRight++;
+                }
+            }
+            
+            const bgLeft = bgCountLeft > 0 ? bgSumLeft / bgCountLeft : 200;
+            const bgRight = bgCountRight > 0 ? bgSumRight / bgCountRight : 200;
+            const bgTotal = (bgLeft + bgRight) / 2;
+            
+            // Measure peak row brightness on Left and Right
+            let peakSumLeft = 0, pCountLeft = 0;
+            let peakSumRight = 0, pCountRight = 0;
+            let darkPixelCount = 0;
+            const totalPixels = xEnd - xStart;
+            
+            // Threshold for dark pixel: at least 1.5% darker than background
+            const darkThreshold = bgTotal * 0.985;
+            
+            for (let x = xStart; x < xMid; x++) {
+                const idx = (peakY * width + x) * 4;
+                const g = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+                peakSumLeft += g;
+                pCountLeft++;
+                if (g < darkThreshold) darkPixelCount++;
+            }
+            for (let x = xMid; x < xEnd; x++) {
+                const idx = (peakY * width + x) * 4;
+                const g = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+                peakSumRight += g;
+                pCountRight++;
+                if (g < darkThreshold) darkPixelCount++;
+            }
+            
+            const peakLeft = pCountLeft > 0 ? peakSumLeft / pCountLeft : 200;
+            const peakRight = pCountRight > 0 ? peakSumRight / pCountRight : 200;
+            
+            const dropLeft = bgLeft - peakLeft;
+            const dropRight = bgRight - peakRight;
+            const coverage = darkPixelCount / (totalPixels || 1);
+            line.horizontalCoverage = Math.round(coverage * 100) / 100;
+            
+            // Specks / dust artifacts have significant drop on only one extreme side while the other side is flat/negative
+            const isSingleSidedDot = (dropLeft > 12 && dropRight < -2) || (dropRight > 12 && dropLeft < -2);
+            
+            if (isSingleSidedDot && line.height < 0.025) {
                 line.detected = false;
-                line.rejectedReason = 'insufficient_horizontal_coverage';
-                line.horizontalCoverage = Math.round(maxCoverage * 100) / 100;
-            } else if (consistentRows < minConsistentRows) {
-                line.detected = false;
-                line.rejectedReason = 'inconsistent_across_rows';
-                line.horizontalCoverage = Math.round(maxCoverage * 100) / 100;
-            } else if (!leftRightConsistent && maxCoverage < 0.40) {
-                line.detected = false;
-                line.rejectedReason = 'left_right_inconsistent';
-                line.horizontalCoverage = Math.round(maxCoverage * 100) / 100;
-            } else {
-                line.horizontalCoverage = Math.round(maxCoverage * 100) / 100;
+                line.rejectedReason = 'localized_speck_artifact';
             }
         }
         
         // Recompute SNR and tcRatio after spatial validation
         if (peakResults.cLine.detected && peakResults.tLine.detected) {
-            // Both still detected — keep tcRatio
-        } else if (!peakResults.cLine.detected && peakResults.tLine.detected) {
-            // C-line rejected but T-line still detected — T-line alone is meaningless
-            // (T-line without C-line = invalid test)
+            const aucRatio = (peakResults.cLine.auc > 0) ? (peakResults.tLine.auc / peakResults.cLine.auc) : 0;
+            peakResults.tcRatio = aucRatio;
+            peakResults.relativeRatio = peakResults.cLine.height > 0 ? (peakResults.tLine.height / peakResults.cLine.height) : 0;
         } else if (peakResults.cLine.detected && !peakResults.tLine.detected) {
-            // T-line rejected — update tcRatio
             peakResults.tcRatio = 0;
             peakResults.relativeRatio = 0;
         }
         
-        // Recompute SNR
         const snr = peakResults.bgNoiseSigma > 0.0001 
             ? (peakResults.cLine.height / peakResults.bgNoiseSigma) 
             : 0.0;

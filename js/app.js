@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
         countdownRemaining: 0,
         currentPage: 1,
         memoEditId: null,
+        activeGraphRecord: null,
         // Zoom control states
         currentZoom: 1.0,
         minZoom: 1.0,
@@ -132,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnMemoConfirm: document.getElementById('btn-memo-confirm'),
         // Graph popup
         graphPopup: document.getElementById('graph-popup'),
+        graphPopupDatetime: document.getElementById('graph-popup-datetime'),
         graphPopupResult: document.getElementById('graph-popup-result-badge'),
         btnGraphClose: document.getElementById('btn-graph-close'),
         btnGraphClose2: document.getElementById('btn-graph-close2'),
@@ -141,14 +143,18 @@ document.addEventListener('DOMContentLoaded', () => {
         metricC: document.getElementById('metric-c-intensity'),
         metricConf: document.getElementById('metric-confidence'),
         metricSnr: document.getElementById('metric-snr'),
-        // Settings popup & CSV
+        // CSV Calendar Popup
         btnExportCsv: document.getElementById('btn-export-csv'),
-        btnOpenSettings: document.getElementById('btn-open-settings'),
-        settingsPopup: document.getElementById('settings-popup'),
-        inputWebhookUrl: document.getElementById('input-webhook-url'),
-        btnSettingsClose: document.getElementById('btn-settings-close'),
-        btnSettingsCancel: document.getElementById('btn-settings-cancel'),
-        btnSettingsSave: document.getElementById('btn-settings-save'),
+        csvCalendarPopup: document.getElementById('csv-calendar-popup'),
+        btnCsvCalClose: document.getElementById('btn-csv-cal-close'),
+        btnCsvCalCancel: document.getElementById('btn-csv-cal-cancel'),
+        btnCsvCalDownload: document.getElementById('btn-csv-cal-download'),
+        csvRangeStartVal: document.getElementById('csv-range-start-val'),
+        csvRangeEndVal: document.getElementById('csv-range-end-val'),
+        btnCalPrevMonth: document.getElementById('btn-cal-prev-month'),
+        btnCalNextMonth: document.getElementById('btn-cal-next-month'),
+        calMonthTitle: document.getElementById('cal-month-title'),
+        calDaysGrid: document.getElementById('cal-days-grid'),
         // Timesetting extras
         btnViewResults: document.getElementById('btn-view-results'),
         // Login -- 사용자 추가 / 인라인 에러
@@ -990,6 +996,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─────────────────────────────────────────────────────────────
     // RESULTS & HISTORY
     // ─────────────────────────────────────────────────────────────
+    function parseRecordDate(ts) {
+        if (!ts) return 0;
+        const str = String(ts).trim();
+        const m = str.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})[\sT](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+        if (m) {
+            return new Date(
+                parseInt(m[1], 10),
+                parseInt(m[2], 10) - 1,
+                parseInt(m[3], 10),
+                parseInt(m[4], 10),
+                parseInt(m[5], 10),
+                m[6] ? parseInt(m[6], 10) : 0
+            ).getTime();
+        }
+        const d = new Date(str.replace(/\./g, '-'));
+        return !isNaN(d.getTime()) ? d.getTime() : 0;
+    }
+
+    function sortHistoryByDateDesc(arr) {
+        if (!Array.isArray(arr)) return [];
+        return arr.slice().sort((a, b) => {
+            const timeA = parseRecordDate(a.timestamp || a.ts);
+            const timeB = parseRecordDate(b.timestamp || b.ts);
+            return timeB - timeA;
+        });
+    }
+
     function saveResultRecord(analysis, croppedCanvas = null) {
         if (!analysis || !analysis.diagnosis) return null;
         const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
@@ -1038,9 +1071,10 @@ document.addEventListener('DOMContentLoaded', () => {
             confidence: diag.confidence || null
         };
 
-        history.unshift(record);
-        if (history.length > 100) history.pop();
-        localStorage.setItem('yls_lfa_history', JSON.stringify(history));
+        history.push(record);
+        const sorted = sortHistoryByDateDesc(history);
+        if (sorted.length > 100) sorted.pop();
+        localStorage.setItem('yls_lfa_history', JSON.stringify(sorted));
         return record;
     }
 
@@ -1067,7 +1101,8 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const res = await state.sheetsSync.fetchResults(state.currentUser.username);
                 if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-                    localStorage.setItem('yls_lfa_history', JSON.stringify(res.data));
+                    const sorted = sortHistoryByDateDesc(res.data);
+                    localStorage.setItem('yls_lfa_history', JSON.stringify(sorted));
                     renderResultsTable();
                 }
             } catch (err) {
@@ -1082,7 +1117,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (el.resultUserId) el.resultUserId.textContent = state.currentUser.username;
 
-        const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
+        const rawHistory = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
+        const history = sortHistoryByDateDesc(rawHistory);
         const totalPages = Math.max(1, Math.ceil(history.length / PAGE_SIZE));
         if (state.currentPage > totalPages) state.currentPage = totalPages;
 
@@ -1172,45 +1208,290 @@ document.addEventListener('DOMContentLoaded', () => {
         el.btnReturnHome.addEventListener('click', () => navigateTo('timesetting'));
     }
 
-    if (el.btnExportCsv) {
-        el.btnExportCsv.addEventListener('click', () => {
-            if (state.sheetsSync && typeof state.sheetsSync.exportCSV === 'function') {
-                state.sheetsSync.exportCSV();
+    // ─────────────────────────────────────────────────────────────
+    // CSV CALENDAR DATE-RANGE PICKER POPUP (월 달력 다운로드 기간 선택)
+    // ─────────────────────────────────────────────────────────────
+    const calState = {
+        currentYear: new Date().getFullYear(),
+        currentMonth: new Date().getMonth(), // 0-11
+        startDate: null, // 'YYYY-MM-DD'
+        endDate: null,   // 'YYYY-MM-DD'
+        step: 0          // 0: ready to pick start, 1: picked start
+    };
+
+    function formatLocalDate(d) {
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+
+    function formatDisplayDate(dateStr) {
+        if (!dateStr) return '-';
+        return dateStr.replace(/-/g, '.');
+    }
+
+    function openCsvCalendarPopup() {
+        const now = new Date();
+        calState.currentYear = now.getFullYear();
+        calState.currentMonth = now.getMonth();
+
+        // Default to current month range
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        calState.startDate = formatLocalDate(firstDayOfMonth);
+        calState.endDate = formatLocalDate(now);
+        calState.step = 0;
+
+        renderCalendar();
+        if (el.csvCalendarPopup) el.csvCalendarPopup.classList.remove('hidden');
+    }
+
+    function closeCsvCalendarPopup() {
+        if (el.csvCalendarPopup) el.csvCalendarPopup.classList.add('hidden');
+    }
+
+    function renderCalendar() {
+        const year = calState.currentYear;
+        const month = calState.currentMonth;
+
+        if (el.calMonthTitle) {
+            el.calMonthTitle.textContent = `${year}년 ${month + 1}월`;
+        }
+
+        if (el.csvRangeStartVal) {
+            el.csvRangeStartVal.textContent = formatDisplayDate(calState.startDate);
+        }
+        if (el.csvRangeEndVal) {
+            el.csvRangeEndVal.textContent = formatDisplayDate(calState.endDate);
+        }
+
+        const grid = el.calDaysGrid;
+        if (!grid) return;
+        grid.innerHTML = '';
+
+        const todayStr = formatLocalDate(new Date());
+
+        // First day of month and number of days
+        const firstDayIndex = new Date(year, month, 1).getDay(); // 0(Sun) - 6(Sat)
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+        // 1. Previous month trailing days
+        for (let i = firstDayIndex - 1; i >= 0; i--) {
+            const dayNum = daysInPrevMonth - i;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'cal-day-cell other-month';
+            btn.textContent = dayNum;
+            btn.disabled = true;
+            grid.appendChild(btn);
+        }
+
+        // 2. Current month days
+        const pad = n => String(n).padStart(2, '0');
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'cal-day-cell';
+            btn.textContent = day;
+
+            if (dateStr === todayStr) {
+                btn.classList.add('today');
+            }
+
+            const isStart = (dateStr === calState.startDate);
+            const isEnd = (dateStr === calState.endDate);
+            const isSingle = isStart && isEnd;
+            const inRange = (calState.startDate && calState.endDate && 
+                             dateStr > calState.startDate && dateStr < calState.endDate);
+
+            if (isSingle) {
+                btn.classList.add('selected-start', 'selected-end', 'selected-single');
+            } else if (isStart) {
+                btn.classList.add('selected-start');
+            } else if (isEnd) {
+                btn.classList.add('selected-end');
+            } else if (inRange) {
+                btn.classList.add('in-range');
+            }
+
+            btn.addEventListener('click', () => onDayClick(dateStr));
+            grid.appendChild(btn);
+        }
+
+        // 3. Next month leading days to complete grid rows
+        const totalCells = firstDayIndex + daysInMonth;
+        const remainingCells = (7 - (totalCells % 7)) % 7;
+        for (let day = 1; day <= remainingCells; day++) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'cal-day-cell other-month';
+            btn.textContent = day;
+            btn.disabled = true;
+            grid.appendChild(btn);
+        }
+    }
+
+    function onDayClick(dateStr) {
+        if (calState.step === 0) {
+            // First click: sets start date
+            calState.startDate = dateStr;
+            calState.endDate = dateStr;
+            calState.step = 1;
+        } else {
+            // Second click: sets end date
+            if (dateStr >= calState.startDate) {
+                calState.endDate = dateStr;
+                calState.step = 0;
             } else {
-                showToast('내보낼 수 있는 모듈을 찾을 수 없습니다.');
+                // Clicked earlier than start date, so make this the new start date
+                calState.startDate = dateStr;
+                calState.endDate = dateStr;
+                calState.step = 1;
             }
+        }
+        renderCalendar();
+    }
+
+    function applyPreset(preset) {
+        const now = new Date();
+        const todayStr = formatLocalDate(now);
+
+        if (preset === 'today') {
+            calState.startDate = todayStr;
+            calState.endDate = todayStr;
+            calState.currentYear = now.getFullYear();
+            calState.currentMonth = now.getMonth();
+        } else if (preset === 'week') {
+            const weekAgo = new Date();
+            weekAgo.setDate(now.getDate() - 6);
+            calState.startDate = formatLocalDate(weekAgo);
+            calState.endDate = todayStr;
+            calState.currentYear = now.getFullYear();
+            calState.currentMonth = now.getMonth();
+        } else if (preset === 'month') {
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            calState.startDate = formatLocalDate(firstDay);
+            calState.endDate = formatLocalDate(lastDay);
+            calState.currentYear = now.getFullYear();
+            calState.currentMonth = now.getMonth();
+        } else if (preset === 'all') {
+            const rawHistory = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
+            let earliest = '2025-01-01';
+            rawHistory.forEach(r => {
+                const m = String(r.timestamp || '').match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+                if (m) {
+                    const pad = n => String(n).padStart(2, '0');
+                    const d = `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+                    if (d < earliest || earliest === '2025-01-01') earliest = d;
+                }
+            });
+            calState.startDate = earliest;
+            calState.endDate = todayStr;
+            calState.currentYear = now.getFullYear();
+            calState.currentMonth = now.getMonth();
+        }
+
+        calState.step = 0;
+        renderCalendar();
+    }
+
+    function exportCsvForDateRange() {
+        if (!calState.startDate || !calState.endDate) {
+            showToast('다운로드할 기간을 선택해주세요.');
+            return;
+        }
+
+        let start = calState.startDate;
+        let end = calState.endDate;
+        if (start > end) {
+            const temp = start; start = end; end = temp;
+        }
+
+        const rawHistory = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
+        const pad = n => String(n).padStart(2, '0');
+
+        const filtered = rawHistory.filter(rec => {
+            const ts = rec.timestamp || rec.ts || '';
+            const m = String(ts).match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+            if (!m) return false;
+            const recDateStr = `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+            return recDateStr >= start && recDateStr <= end;
+        });
+
+        if (filtered.length === 0) {
+            showToast(`선택한 기간(${start} ~ ${end})의 검사 기록이 없습니다.`);
+            return;
+        }
+
+        const headers = ['timestamp', 'User_ID', 'C_line', 'T_line', 'result', 'value', 'error', 'Memo', 'Crop_image'];
+        const rows = filtered.map(r => [
+            `"${r.timestamp || ''}"`,
+            `"${r.userNickname || r.User_ID || state.currentUser.username || ''}"`,
+            `"${r.cLine || (r.result === '실패' ? 'none' : 'ok')}"`,
+            `"${r.tLine || (r.result === '양성' ? 'ok' : 'none')}"`,
+            `"${r.resultEnglish || (r.result === '양성' ? 'positive' : r.result === '음성' ? 'negative' : 'fail')}"`,
+            `"${r.concentrationStr && r.concentrationStr !== '-' ? r.concentrationStr : (r.result === '양성' ? '0.01' : '')}"`,
+            `"${r.error || ''}"`,
+            `"${r.memo || ''}"`,
+            `"${r.cropUrl || r.cropFilename || ''}"`
+        ]);
+
+        const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\r\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const filenameStart = start.replace(/-/g, '');
+        const filenameEnd = end.replace(/-/g, '');
+        a.download = `LFA_AFP_Test_Results_${filenameStart}_${filenameEnd}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        closeCsvCalendarPopup();
+        showToast(`${filtered.length}건의 검사 기록이 다운로드되었습니다.`);
+    }
+
+    if (el.btnExportCsv) {
+        el.btnExportCsv.addEventListener('click', openCsvCalendarPopup);
+    }
+    if (el.btnCsvCalClose) el.btnCsvCalClose.addEventListener('click', closeCsvCalendarPopup);
+    if (el.btnCsvCalCancel) el.btnCsvCalCancel.addEventListener('click', closeCsvCalendarPopup);
+    if (el.btnCsvCalDownload) el.btnCsvCalDownload.addEventListener('click', exportCsvForDateRange);
+    if (el.csvCalendarPopup) {
+        el.csvCalendarPopup.addEventListener('click', e => {
+            if (e.target === el.csvCalendarPopup) closeCsvCalendarPopup();
         });
     }
 
-    if (el.btnOpenSettings) {
-        el.btnOpenSettings.addEventListener('click', () => {
-            const cfg = state.sheetsSync ? state.sheetsSync.getConfig() : {};
-            if (el.inputWebhookUrl) el.inputWebhookUrl.value = cfg.webhookUrl || '';
-            if (el.settingsPopup) el.settingsPopup.classList.remove('hidden');
-        });
-    }
-
-    function closeSettingsPopup() {
-        if (el.settingsPopup) el.settingsPopup.classList.add('hidden');
-    }
-
-    if (el.btnSettingsClose) el.btnSettingsClose.addEventListener('click', closeSettingsPopup);
-    if (el.btnSettingsCancel) el.btnSettingsCancel.addEventListener('click', closeSettingsPopup);
-    if (el.btnSettingsSave) {
-        el.btnSettingsSave.addEventListener('click', () => {
-            const url = (el.inputWebhookUrl?.value || '').trim();
-            if (state.sheetsSync) {
-                state.sheetsSync.saveConfig({ webhookUrl: url, enabled: !!url });
-                showToast(url ? '구글 시트 연동 URL이 저장되었습니다.' : '연동 설정이 해제되었습니다.');
+    if (el.btnCalPrevMonth) {
+        el.btnCalPrevMonth.addEventListener('click', () => {
+            calState.currentMonth--;
+            if (calState.currentMonth < 0) {
+                calState.currentMonth = 11;
+                calState.currentYear--;
             }
-            closeSettingsPopup();
+            renderCalendar();
         });
     }
-    if (el.settingsPopup) {
-        el.settingsPopup.addEventListener('click', e => {
-            if (e.target === el.settingsPopup) closeSettingsPopup();
+
+    if (el.btnCalNextMonth) {
+        el.btnCalNextMonth.addEventListener('click', () => {
+            calState.currentMonth++;
+            if (calState.currentMonth > 11) {
+                calState.currentMonth = 0;
+                calState.currentYear++;
+            }
+            renderCalendar();
         });
     }
+
+    document.querySelectorAll('.cal-preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const preset = btn.getAttribute('data-preset');
+            if (preset) applyPreset(preset);
+        });
+    });
 
     // ─────────────────────────────────────────────────────────────
     // MEMO POPUP
@@ -1235,16 +1516,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const idx = history.findIndex(r => r.id === state.memoEditId);
         if (idx >= 0) {
             history[idx].memo = (el.memoTextarea?.value || '').trim();
-            localStorage.setItem('yls_lfa_history', JSON.stringify(history));
+            const sorted = sortHistoryByDateDesc(history);
+            localStorage.setItem('yls_lfa_history', JSON.stringify(sorted));
 
-            // 구글 시트에 메모 변경 동기화
+            // 구글 시트에 메모 변경 동기화 (원래의 검사일시 유지)
             if (state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
                 state.sheetsSync.syncResult(
                     { diagnosis: { result: history[idx].result, concentrationStr: history[idx].concentrationStr } },
                     state.currentUser,
                     history[idx].memo,
                     history[idx].cropFilename || '',
-                    history[idx].cropImageDataUrl || ''
+                    history[idx].cropImageDataUrl || '',
+                    history[idx].timestamp
                 ).catch(e => console.warn('Memo sheet sync error:', e));
             }
         }
@@ -1263,6 +1546,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─────────────────────────────────────────────────────────────
     // GRAPH ANALYSIS POPUP
     // ─────────────────────────────────────────────────────────────
+    function formatPopupDateTime(ts) {
+        if (!ts) return '검사일시 : -';
+        const str = String(ts).trim();
+        const m = str.match(/(\d{4})[-./](\d{2})[-./](\d{2})[\sT](\d{2}):(\d{2})/);
+        if (m) {
+            return `검사일시 : ${m[1]}.${m[2]}.${m[3]}.${m[4]}:${m[5]}`;
+        }
+        return `검사일시 : ${str}`;
+    }
+
     function updateResultBadge(resText) {
         if (!el.graphPopupResult) return;
         const res = resText || '실패';
@@ -1278,7 +1571,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showGraphPopup(record) {
+        state.activeGraphRecord = record;
         if (el.graphPopup) el.graphPopup.classList.remove('hidden');
+
+        if (el.graphPopupDatetime) {
+            el.graphPopupDatetime.textContent = formatPopupDateTime(record.timestamp);
+        }
 
         updateResultBadge(record.result);
 
@@ -1376,8 +1674,14 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const history = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
                                 const hIdx = history.findIndex(r => r.id === record.id);
                                 if (hIdx >= 0) {
-                                    history[hIdx] = { ...history[hIdx], ...record };
-                                    localStorage.setItem('yls_lfa_history', JSON.stringify(history));
+                                    const originalTimestamp = history[hIdx].timestamp || record.timestamp;
+                                    history[hIdx] = {
+                                        ...history[hIdx],
+                                        ...record,
+                                        timestamp: originalTimestamp
+                                    };
+                                    const sorted = sortHistoryByDateDesc(history);
+                                    localStorage.setItem('yls_lfa_history', JSON.stringify(sorted));
                                     renderResultsTable();
                                 }
 
@@ -1387,7 +1691,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                         state.currentUser,
                                         record.memo || '',
                                         record.cropFilename || '',
-                                        record.cropImageDataUrl || imgSrc
+                                        record.cropImageDataUrl || imgSrc,
+                                        record.timestamp
                                     ).then(() => {
                                         console.log(`[GoogleSheets] 레코드(${record.id}) 업데이트 성공: ${oldResult} -> ${newResult}`);
                                     }).catch(err => console.warn('Google Sheets update sync error:', err));

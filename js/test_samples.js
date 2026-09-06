@@ -20,7 +20,7 @@ class LFATestSamples {
             },
             {
                 id: 'strong_positive',
-                title: '강양성 샘플 (Strong Positive, 0.05 mg/dL)',
+                title: '강양성 샘플 (Strong Positive, 0.05 ng/dL)',
                 description: 'C라인과 선명한 T라인 발색',
                 generate: () => LFATestSamples.createSyntheticKit({
                     cLine: 0.90,
@@ -32,7 +32,7 @@ class LFATestSamples {
             },
             {
                 id: 'faint_positive',
-                title: '미세 양성 샘플 (Faint Line, 0.01 mg/dL)',
+                title: '미세 양성 샘플 (Faint Line, 0.01 ng/dL)',
                 description: '육안 판별이 어려운 극미량 T라인 (Green 채널 고감도 검출)',
                 generate: () => LFATestSamples.createSyntheticKit({
                     cLine: 0.88,
@@ -44,7 +44,7 @@ class LFATestSamples {
             },
             {
                 id: 'negative',
-                title: '음성 샘플 (Negative, 0.00 mg/dL)',
+                title: '음성 샘플 (Negative, 0.00 ng/dL)',
                 description: 'C라인만 정상 발색, T라인 없음',
                 generate: () => LFATestSamples.createSyntheticKit({
                     cLine: 0.85,

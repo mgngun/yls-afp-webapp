@@ -1126,6 +1126,215 @@ body {
     background: #ffffff;
 }
 
+/* ==========================================================================
+   CSV Calendar Date Range Picker Popup
+   ========================================================================== */
+.csv-cal-card {
+    max-width: 360px;
+}
+
+.csv-cal-body {
+    padding: 14px 18px 16px;
+}
+
+.csv-range-display {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    margin-bottom: 12px;
+}
+
+.csv-range-box {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.range-box-label {
+    font-size: 10px;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.range-box-val {
+    font-size: 13px;
+    font-weight: 700;
+    color: #0f172a;
+    font-family: monospace;
+}
+
+.csv-range-divider {
+    font-size: 14px;
+    color: #94a3b8;
+    font-weight: 600;
+}
+
+.cal-nav-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    padding: 0 4px;
+}
+
+.cal-month-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.cal-nav-btn {
+    width: 30px;
+    height: 30px;
+    border: 1px solid #e2e8f0;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #475569;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.cal-nav-btn:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
+
+.cal-grid-container {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: var(--radius-sm);
+    padding: 8px 6px 6px;
+}
+
+.cal-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    margin-bottom: 6px;
+}
+
+.cal-weekday.sun {
+    color: #ef4444;
+}
+
+.cal-weekday.sat {
+    color: #3b82f6;
+}
+
+.cal-days-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    row-gap: 2px;
+}
+
+.cal-day-cell {
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 500;
+    color: #334155;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.12s ease;
+    user-select: none;
+    padding: 0;
+}
+
+.cal-day-cell:hover:not(:disabled):not(.other-month) {
+    background: #e2e8f0;
+}
+
+.cal-day-cell.other-month {
+    color: #cbd5e1;
+    pointer-events: none;
+}
+
+.cal-day-cell.today {
+    font-weight: 700;
+    position: relative;
+}
+
+.cal-day-cell.today::after {
+    content: '';
+    position: absolute;
+    bottom: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--primary);
+}
+
+.cal-day-cell.selected-start,
+.cal-day-cell.selected-end {
+    background: var(--primary) !important;
+    color: #ffffff !important;
+    font-weight: 700;
+}
+
+.cal-day-cell.selected-start {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+.cal-day-cell.selected-end {
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+.cal-day-cell.selected-single {
+    border-radius: 8px !important;
+}
+
+.cal-day-cell.in-range {
+    background: #ccfbf1 !important;
+    color: #0f766e !important;
+    border-radius: 0;
+}
+
+.cal-presets-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.cal-preset-btn {
+    flex: 1;
+    padding: 6px 0;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid #e2e8f0;
+    border-radius: var(--radius-sm);
+    background: #f8fafc;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: inherit;
+}
+
+.cal-preset-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+    border-color: #cbd5e1;
+}
+
 .popup-btn-row {
     display: flex;
     gap: 10px;
@@ -1188,11 +1397,24 @@ body {
     align-items: flex-start;
 }
 
+.graph-popup-sub-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 2px;
+}
+
 .graph-popup-sub {
     font-size: 11px;
     color: #64748b;
     font-weight: 400;
-    margin-bottom: 2px;
+}
+
+.graph-popup-datetime {
+    font-size: 11px;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.01em;
 }
 
 .graph-popup-header .popup-title {

@@ -107,11 +107,11 @@ class GoogleSheetsSync {
         }
     }
 
-    async syncResult(analysisResult, user = {}, memo = '', cropFilename = '', cropDataUrl = null) {
+    async syncResult(analysisResult, user = {}, memo = '', cropFilename = '', cropDataUrl = null, customTimestamp = null) {
         if (!analysisResult) return;
         const diag = analysisResult.diagnosis || {};
         return this.recordResult({
-            timestamp:         this.formatTimestamp(new Date()),
+            timestamp:         customTimestamp || this.formatTimestamp(new Date()),
             userId:            user.username || user.nickname || user.id || 'guest',
             cLineStatus:       diag.cLineStatus,
             tLineStatus:       diag.tLineStatus,

@@ -309,8 +309,19 @@ function doGet(e) {
         }
       }
 
-      // 최신 검사가 맨 위로 오도록 내림차순 정렬 (역순)
-      results.reverse();
+      // 최신 검사일시가 맨 위로 오도록 내림차순 정렬
+      results.sort(function(a, b) {
+        var parseDate = function(str) {
+          if (!str) return 0;
+          var m = String(str).match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})[\sT](\d{1,2}):(\d{1,2})/);
+          if (m) {
+            return new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10), parseInt(m[4],10), parseInt(m[5],10)).getTime();
+          }
+          var d = new Date(String(str).replace(/\./g, "-"));
+          return !isNaN(d.getTime()) ? d.getTime() : 0;
+        };
+        return parseDate(b.timestamp) - parseDate(a.timestamp);
+      });
 
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",

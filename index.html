@@ -7,7 +7,7 @@
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>YLS - AFP Testing for Cancer | LFA 스마트폰 AI 진단</title>
     <meta name="description" content="YLS AFP Testing for Cancer - LFA 스마트폰 카메라 AI 진단 웹앱">
-    <link rel="stylesheet" href="css/style.css?v=4.4.4">
+    <link rel="stylesheet" href="css/style.css?v=4.4.9">
     <!-- Login 화면의 사용자 추가 버튼용 Noto Sans KR -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -230,7 +230,7 @@
                             <tr>
                                 <th>검사일시</th>
                                 <th>검사결과</th>
-                                <th>농도(mg/dL)</th>
+                                <th>농도(ng/dL)</th>
                                 <th>메모</th>
                             </tr>
                         </thead>
@@ -242,7 +242,6 @@
 
                 <div class="results-actions-row">
                     <button id="btn-export-csv" class="btn-sub-action">📊 CSV 다운로드</button>
-                    <button id="btn-open-settings" class="btn-sub-action">⚙️ 구글시트 연동 설정</button>
                 </div>
             </div>
 
@@ -281,7 +280,10 @@
             <div class="popup-card graph-popup-card">
                 <div class="popup-header graph-popup-header">
                     <div>
-                        <p class="graph-popup-sub">Green Channel (530nm)</p>
+                        <div class="graph-popup-sub-row">
+                            <span class="graph-popup-sub">Green Channel (530nm)</span>
+                            <span id="graph-popup-datetime" class="graph-popup-datetime">검사일시 : -</span>
+                        </div>
                         <div class="graph-popup-title-row">
                             <h3 class="popup-title">흡광도 피크 분석</h3>
                             <span id="graph-popup-result-badge" class="graph-popup-result-badge">‘검사결과 : -’</span>
@@ -319,26 +321,59 @@
             </div>
         </div>
 
-        <!-- SETTINGS POPUP (구글 시트 Webhook) -->
-        <div id="settings-popup" class="popup-overlay hidden">
-            <div class="popup-card">
+        <!-- CSV CALENDAR DATE PICKER POPUP (월 달력 다운로드 기간 선택) -->
+        <div id="csv-calendar-popup" class="popup-overlay hidden">
+            <div class="popup-card csv-cal-card">
                 <div class="popup-header">
-                    <h3 class="popup-title">구글 시트 연동 설정</h3>
-                    <button id="btn-settings-close" class="btn-popup-close">✕</button>
+                    <h3 class="popup-title">CSV 다운로드 기간 선택</h3>
+                    <button id="btn-csv-cal-close" class="btn-popup-close">✕</button>
                 </div>
-                <div style="padding: 16px;">
-                    <p style="font-size: 12px; color: #64748b; margin-bottom: 8px; line-height: 1.5;">
-                        Apps Script를 [웹 앱]으로 배포한 후 발급받은 URL을 입력하세요. 검사 시 실시간 자동 동기화됩니다.
-                    </p>
-                    <input id="input-webhook-url" type="url" class="login-input" style="font-size: 12px; height: 42px;"
-                        value="https://script.google.com/macros/s/AKfycbzyZ_TTNI1Yh9LeGFFR3u2dAW7wAOJUr15HS032lEPDUovWq5syJelMRBbEjV2DthF7/exec"
-                        placeholder="https://script.google.com/macros/s/.../exec">
-                    <p style="font-size: 11px; color: #94a3b8; margin-top: 6px;">시트 ID:
-                        1ckyAywMytLJCClUgwizQakq5xdQmm_5fNeQYSW4S3jo</p>
+                <div class="csv-cal-body">
+                    <!-- Selected Range Display -->
+                    <div class="csv-range-display">
+                        <div class="csv-range-box" id="csv-range-start-box">
+                            <span class="range-box-label">시작일</span>
+                            <span class="range-box-val" id="csv-range-start-val">-</span>
+                        </div>
+                        <span class="csv-range-divider">~</span>
+                        <div class="csv-range-box" id="csv-range-end-box">
+                            <span class="range-box-label">종료일</span>
+                            <span class="range-box-val" id="csv-range-end-val">-</span>
+                        </div>
+                    </div>
+
+                    <!-- Month Navigator -->
+                    <div class="cal-nav-row">
+                        <button id="btn-cal-prev-month" class="cal-nav-btn" type="button" aria-label="이전 달">◀</button>
+                        <span id="cal-month-title" class="cal-month-title">2026년 9월</span>
+                        <button id="btn-cal-next-month" class="cal-nav-btn" type="button" aria-label="다음 달">▶</button>
+                    </div>
+
+                    <!-- Calendar Days Table/Grid -->
+                    <div class="cal-grid-container">
+                        <div class="cal-weekdays">
+                            <span class="cal-weekday sun">일</span>
+                            <span class="cal-weekday">월</span>
+                            <span class="cal-weekday">화</span>
+                            <span class="cal-weekday">수</span>
+                            <span class="cal-weekday">목</span>
+                            <span class="cal-weekday">금</span>
+                            <span class="cal-weekday sat">토</span>
+                        </div>
+                        <div id="cal-days-grid" class="cal-days-grid"></div>
+                    </div>
+
+                    <!-- Quick Preset Shortcuts -->
+                    <div class="cal-presets-row">
+                        <button class="cal-preset-btn" data-preset="today" type="button">오늘</button>
+                        <button class="cal-preset-btn" data-preset="week" type="button">최근 7일</button>
+                        <button class="cal-preset-btn" data-preset="month" type="button">이번 달</button>
+                        <button class="cal-preset-btn" data-preset="all" type="button">전체 기간</button>
+                    </div>
                 </div>
                 <div class="popup-btn-row">
-                    <button id="btn-settings-cancel" class="btn-popup-cancel">취소</button>
-                    <button id="btn-settings-save" class="btn-popup-confirm">저장</button>
+                    <button id="btn-csv-cal-cancel" class="btn-popup-cancel" type="button">취소</button>
+                    <button id="btn-csv-cal-download" class="btn-popup-confirm" type="button">다운로드</button>
                 </div>
             </div>
         </div>
@@ -420,11 +455,11 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/test_samples.js?v=4.4.4"></script>
-    <script src="js/lfa_analyzer.js?v=4.4.4"></script>
-    <script src="js/google_sheets.js?v=4.4.4"></script>
+    <script src="js/test_samples.js?v=4.4.9"></script>
+    <script src="js/lfa_analyzer.js?v=4.4.9"></script>
+    <script src="js/google_sheets.js?v=4.4.9"></script>
     <script src="js/google_user_auth.js?v=1.0.2"></script>
-    <script src="js/app.js?v=4.4.4"></script>
+    <script src="js/app.js?v=4.4.9"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v3d52b47920f24c319d37e2661827c42b1787588026925" integrity="sha512-d9sL6GJLXn6fInD1+TVXhTcQOsmxeHfmHAvwGDIxp5TO+uo1fiWW7mHomMj4MLRlCsJDTqXzWLHJFFlPCEIj/A==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
 </body>
 
