@@ -29,15 +29,15 @@ class LFAAnalyzer {
             
             // Statistical noise gate
             minCProminenceSigma: 3.5,
-            minTProminenceSigma: 3.5,      // ↑ T-line은 더 엄격한 통계적 기준 적용
+            minTProminenceSigma: 2.5,      // 원복: statThreshold 과다 상승으로 T=0.022도 탈락하는 문제 방지
             
             // Weak C-line & T-line acceptance
             absoluteMinCPeak: 0.015,       // Standard threshold
             weakCMinPeak: 0.008,           // Weak threshold
             weakCMinSNR: 5.0,              // Weak C-line requires SNR >= 5
-            absoluteMinTPeak: 0.010,       // ↑ 0.008 → 0.010: T-line 표준 임계값 강화
-            weakTMinPeak: 0.008,           // ↑ 0.0045 → 0.008: weak 임계값도 상향
-            weakTMinSNR: 6.0,              // ↑ 4.0 → 6.0: T-line SNR 요구치 강화
+            absoluteMinTPeak: 0.010,       // ↑ 0.008 → 0.010: T=0.005 노이즈 차단 (핵심 필터)
+            weakTMinPeak: 0.008,           // ↑ 0.0045 → 0.008: weak 경로도 상향
+            weakTMinSNR: 4.0,              // 원복: SNR 기준이 너무 높으면 T=0.022도 탈락
             
             // T/C ratio — 보조 필터 (C-line이 매우 강할 때 ratio가 낮아지므로 최소값만 유지)
             minTCRatio: 0.03,              // 원복: ratio 기준은 보조 역할만, 주 필터는 절대 임계값
