@@ -28,19 +28,19 @@ class LFAAnalyzer {
             minLocalProminence: 0.0025,
             
             // Statistical noise gate
-            minCProminenceSigma: 3.0,
-            minTProminenceSigma: 2.5,
+            minCProminenceSigma: 3.5,
+            minTProminenceSigma: 3.5,      // ↑ T-line은 더 엄격한 통계적 기준 적용
             
             // Weak C-line & T-line acceptance
             absoluteMinCPeak: 0.015,       // Standard threshold
             weakCMinPeak: 0.008,           // Weak threshold
             weakCMinSNR: 5.0,              // Weak C-line requires SNR >= 5
-            absoluteMinTPeak: 0.008,
-            weakTMinPeak: 0.0045,
-            weakTMinSNR: 4.0,
+            absoluteMinTPeak: 0.010,       // ↑ 0.008 → 0.010: T-line 표준 임계값 강화
+            weakTMinPeak: 0.008,           // ↑ 0.0045 → 0.008: weak 임계값도 상향
+            weakTMinSNR: 6.0,              // ↑ 4.0 → 6.0: T-line SNR 요구치 강화
             
-            // T/C ratio
-            minTCRatio: 0.03,
+            // T/C ratio — C-line 대비 T-line이 충분히 커야 양성 판정
+            minTCRatio: 0.15,              // ↑ 0.03 → 0.15: T/C ratio 최소 15% 이상
             
             // Multi-scale top-hat kernel sizes
             topHatKernels: [8, 14, 22],
@@ -524,7 +524,8 @@ class LFAAnalyzer {
 
         let tDetected = tPeak.detected;
         if (tDetected) {
-            if (relativeRatio < this.config.minTCRatio || aucRatio < 0.05) {
+            // relativeRatio: peak height 비율, aucRatio: 면적 비율 — 둘 다 minTCRatio 이상이어야 양성
+            if (relativeRatio < this.config.minTCRatio || aucRatio < this.config.minTCRatio) {
                 tDetected = false;
                 tPeak.detected = false;
                 tPeak.rejectedReason = 'insufficient_tc_ratio';
