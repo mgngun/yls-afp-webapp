@@ -39,8 +39,8 @@ class LFAAnalyzer {
             weakTMinPeak: 0.008,           // ↑ 0.0045 → 0.008: weak 임계값도 상향
             weakTMinSNR: 6.0,              // ↑ 4.0 → 6.0: T-line SNR 요구치 강화
             
-            // T/C ratio — C-line 대비 T-line이 충분히 커야 양성 판정
-            minTCRatio: 0.15,              // ↑ 0.03 → 0.15: T/C ratio 최소 15% 이상
+            // T/C ratio — 보조 필터 (C-line이 매우 강할 때 ratio가 낮아지므로 최소값만 유지)
+            minTCRatio: 0.03,              // 원복: ratio 기준은 보조 역할만, 주 필터는 절대 임계값
             
             // Multi-scale top-hat kernel sizes
             topHatKernels: [8, 14, 22],
@@ -524,8 +524,9 @@ class LFAAnalyzer {
 
         let tDetected = tPeak.detected;
         if (tDetected) {
-            // relativeRatio: peak height 비율, aucRatio: 면적 비율 — 둘 다 minTCRatio 이상이어야 양성
-            if (relativeRatio < this.config.minTCRatio || aucRatio < this.config.minTCRatio) {
+            // relativeRatio: peak height 비율, aucRatio: 면적 비율
+            // C-line이 매우 강할 때 ratio가 낮아지므로 AUC ratio는 기존 0.05 유지
+            if (relativeRatio < this.config.minTCRatio || aucRatio < 0.05) {
                 tDetected = false;
                 tPeak.detected = false;
                 tPeak.rejectedReason = 'insufficient_tc_ratio';
