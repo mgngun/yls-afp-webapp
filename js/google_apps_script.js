@@ -328,12 +328,10 @@ function doGet(e) {
             cropUrl = cropVal;
           }
 
-          // 4) URL에서 file ID 추출
+          // 4) URL에서 순수 file ID 추출 (25자 이상 영문숫자)
           if (cropUrl) {
-            var idMatch = cropUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || 
-                          cropUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
-                          cropUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-            if (idMatch) driveFileId = idMatch[1];
+            var idMatch = cropUrl.match(/[-\w]{25,}/);
+            if (idMatch) driveFileId = idMatch[0];
           }
 
           // 5) [중요] 드라이브 폴더에서 파일명으로 직접 파일 검색 (Fallback)

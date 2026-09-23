@@ -85,9 +85,12 @@ class GoogleSheetsSync {
         const cfg = this.getConfig();
         if (!cfg.webhookUrl) return null;
 
+        const idMatch = String(fileId).match(/[-\w]{25,}/);
+        const cleanFileId = idMatch ? idMatch[0] : String(fileId).trim();
+
         const targetUrl = new URL(cfg.webhookUrl);
         targetUrl.searchParams.set('action', 'getImage');
-        targetUrl.searchParams.set('fileId', fileId);
+        targetUrl.searchParams.set('fileId', cleanFileId);
         targetUrl.searchParams.set('_t', Date.now().toString());
 
         try {

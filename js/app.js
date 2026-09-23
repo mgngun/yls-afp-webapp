@@ -1601,12 +1601,13 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.textAlign = 'center';
             ctx.fillText('로딩 중...', 36, 95);
 
-            let targetFileId = record.driveFileId;
-            if (!targetFileId && record.cropUrl) {
-                const idM = record.cropUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
-                    record.cropUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
-                    record.cropUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-                if (idM) targetFileId = idM[1];
+            let targetFileId = '';
+            const rawIdOrUrl = record.driveFileId || record.cropUrl || '';
+            const idM = String(rawIdOrUrl).match(/[-\w]{25,}/);
+            if (idM) {
+                targetFileId = idM[0];
+            } else {
+                targetFileId = record.driveFileId || '';
             }
 
             if (record.cropImageDataUrl && record.cropImageDataUrl.startsWith('data:image/')) {
