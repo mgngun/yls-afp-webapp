@@ -1560,7 +1560,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const h = pad(m[4]);
             const min = pad(m[5]);
             const s = m[6] ? pad(m[6]) : '00';
-            return `검사일시 : ${y}-${mon}-${d} ${h}:${min} : ${s}`;
+            return `검사일시 : ${y}-${mon}-${d} ${h}:${min}:${s}`;
         }
         return `검사일시 : ${str}`;
     }
