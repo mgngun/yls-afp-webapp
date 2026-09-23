@@ -972,7 +972,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             state.currentUser,
                             savedRecord?.memo || '',
                             savedRecord?.cropFilename || '',
-                            cropUrl
+                            cropUrl,
+                            savedRecord?.timestamp || null
                         ).catch(e => console.warn('Sheets sync:', e));
                     }
                 } catch (e) {
@@ -1030,7 +1031,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const now = new Date();
         const pad = n => String(n).padStart(2, '0');
-        const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+        const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
         const fileTimestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
         const fname = `${state.currentUser.username}_${fileTimestamp}.jpg`;
@@ -1549,9 +1550,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatPopupDateTime(ts) {
         if (!ts) return '검사일시 : -';
         const str = String(ts).trim();
-        const m = str.match(/(\d{4})[-./](\d{2})[-./](\d{2})[\sT](\d{2}):(\d{2})/);
+        // 초 포함 형식: YYYY-MM-DD HH:MM:SS, YYYY.MM.DD.HH:MM 등 모든 구분자 지원
+        const m = str.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})[\sT.]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
         if (m) {
-            return `검사일시 : ${m[1]}.${m[2]}.${m[3]}.${m[4]}:${m[5]}`;
+            const pad = n => String(n).padStart(2, '0');
+            const y = m[1];
+            const mon = pad(m[2]);
+            const d = pad(m[3]);
+            const h = pad(m[4]);
+            const min = pad(m[5]);
+            const s = m[6] ? pad(m[6]) : '00';
+            return `검사일시 : ${y}-${mon}-${d} ${h}:${min} : ${s}`;
         }
         return `검사일시 : ${str}`;
     }

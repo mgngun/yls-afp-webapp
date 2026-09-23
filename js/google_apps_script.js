@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * YLS LFA AFP 진단 키트 - Google Apps Script (GAS) 백엔드 코드
- * 구글 시트 저장 + 구글 드라이브 이미지 자동 업로드 연동 (v4.3.2)
+ * 구글 시트 저장/수정(중복 방지) + 구글 드라이브 이미지 연동 (v4.5.1)
  * ============================================================================
  * 
  * [설정된 구글 리소스]
@@ -118,31 +118,85 @@ function doPost(e) {
       errorMsg = (errorMsg ? errorMsg + " | " : "") + "NoImageBase64Received";
     }
     
-    // 3. 스프레드시트에 행 추가
-    var newRow = [
-      timestamp,
-      userId,
-      cLine,
-      tLine,
-      result,
-      value,
-      errorMsg,
-      memo,
-      rawFilename
-    ];
-    sheet.appendRow(newRow);
+    // 3. 기존 행 존재 여부 검색 (중복 방지 & 업데이트)
     var lastRowIdx = sheet.getLastRow();
+    var targetRow = -1;
 
-    // 4. 구글 드라이브 업로드 성공 시 HYPERLINK 수식 직접 셀에 주입 (파란색 클릭 가능한 링크)
-    if (isDriveSuccess && driveFileUrl) {
-      var cropCell = sheet.getRange(lastRowIdx, 9);
-      var formula = '=HYPERLINK("' + driveFileUrl + '", "' + rawFilename + '")';
-      cropCell.setFormula(formula);
+    if (lastRowIdx > 1) {
+      // 2행부터 마지막 행까지의 데이터 (Col 1: timestamp, Col 2: userId, Col 9: Crop_image)
+      var displayValues = sheet.getRange(2, 1, lastRowIdx - 1, 9).getDisplayValues();
+      
+      // 최근에 등록된 행일 가능성이 높으므로 역순(마지막 행부터)으로 검색
+      for (var i = displayValues.length - 1; i >= 0; i--) {
+        var rowNum = i + 2; // 시트 1-indexed 실제 행 번호
+        var rowTs = (displayValues[i][0] || "").trim();
+        var rowUser = (displayValues[i][1] || "").trim();
+        var rowCrop = (displayValues[i][8] || "").trim();
+
+        // 1순위 매칭: 파일명 일치
+        var isFileMatch = rawFilename && rowCrop && (rowCrop.indexOf(rawFilename) !== -1 || rawFilename.indexOf(rowCrop) !== -1);
+        
+        // 2순위 매칭: timestamp와 userId 일치 (공백 제거 후 비교)
+        var cleanTs = timestamp ? timestamp.replace(/\s+/g, '') : '';
+        var cleanRowTs = rowTs ? rowTs.replace(/\s+/g, '') : '';
+        var isTimeMatch = cleanTs && cleanRowTs && (cleanTs === cleanRowTs);
+        var isUserMatch = !userId || !rowUser || (rowUser === userId);
+
+        if (isFileMatch || (isTimeMatch && isUserMatch)) {
+          targetRow = rowNum;
+          break;
+        }
+      }
+    }
+
+    var isUpdated = false;
+    if (targetRow > 0) {
+      // [기존 행 덮어쓰기 업데이트]
+      isUpdated = true;
+      if (cLine) sheet.getRange(targetRow, 3).setValue(cLine);
+      if (tLine) sheet.getRange(targetRow, 4).setValue(tLine);
+      if (result) sheet.getRange(targetRow, 5).setValue(result);
+      if (value !== undefined && value !== "") sheet.getRange(targetRow, 6).setValue(value);
+      if (errorMsg) sheet.getRange(targetRow, 7).setValue(errorMsg);
+      if (data.Memo !== undefined || data.memo !== undefined) {
+        sheet.getRange(targetRow, 8).setValue(memo);
+      }
+      
+      // 새로 드라이브에 이미지가 올라갔다면 하이퍼링크 갱신
+      if (isDriveSuccess && driveFileUrl) {
+        var cropCell = sheet.getRange(targetRow, 9);
+        var formula = '=HYPERLINK("' + driveFileUrl + '", "' + rawFilename + '")';
+        cropCell.setFormula(formula);
+      }
+    } else {
+      // [신규 행 추가]
+      var newRow = [
+        timestamp,
+        userId,
+        cLine,
+        tLine,
+        result,
+        value,
+        errorMsg,
+        memo,
+        rawFilename
+      ];
+      sheet.appendRow(newRow);
+      var newLastRowIdx = sheet.getLastRow();
+
+      // 4. 구글 드라이브 업로드 성공 시 HYPERLINK 수식 직접 셀에 주입 (파란색 클릭 가능한 링크)
+      if (isDriveSuccess && driveFileUrl) {
+        var cropCell = sheet.getRange(newLastRowIdx, 9);
+        var formula = '=HYPERLINK("' + driveFileUrl + '", "' + rawFilename + '")';
+        cropCell.setFormula(formula);
+      }
     }
     
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
-      message: "Processed",
+      message: isUpdated ? ("Updated row " + targetRow) : "Appended new row",
+      isUpdated: isUpdated,
+      rowNumber: isUpdated ? targetRow : sheet.getLastRow(),
       timestamp: timestamp,
       driveFileUrl: driveFileUrl,
       driveFileId: driveFileId,
@@ -225,12 +279,17 @@ function doGet(e) {
             continue;
           }
 
-          // 날짜 포맷 표준화
+          // 날짜 포맷 표준화 (초 단위 포함)
           var tsFormatted = "";
           if (rawTs instanceof Date) {
-            tsFormatted = Utilities.formatDate(rawTs, "Asia/Seoul", "yyyy-MM-dd HH:mm");
+            tsFormatted = Utilities.formatDate(rawTs, "Asia/Seoul", "yyyy-MM-dd HH:mm:ss");
           } else {
-            tsFormatted = String(rawTs || "").slice(0, 16);
+            var rawStr = String(rawTs || "").trim();
+            if (rawStr.length === 16) {
+              tsFormatted = rawStr + ":00";
+            } else {
+              tsFormatted = rawStr.slice(0, 19);
+            }
           }
 
           // 결과 한글화 매핑
@@ -313,9 +372,9 @@ function doGet(e) {
       results.sort(function(a, b) {
         var parseDate = function(str) {
           if (!str) return 0;
-          var m = String(str).match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})[\sT](\d{1,2}):(\d{1,2})/);
+          var m = String(str).match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})[\sT](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
           if (m) {
-            return new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10), parseInt(m[4],10), parseInt(m[5],10)).getTime();
+            return new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10), parseInt(m[4],10), parseInt(m[5],10), parseInt(m[6] || 0, 10)).getTime();
           }
           var d = new Date(String(str).replace(/\./g, "-"));
           return !isNaN(d.getTime()) ? d.getTime() : 0;
@@ -340,8 +399,55 @@ function doGet(e) {
   // 3. 기본 상태 응답
   return ContentService.createTextOutput(JSON.stringify({
     status: "online",
-    message: "YLS LFA Kit API v4.4.2 is running",
+    message: "YLS LFA Kit API v4.5.1 is running",
     driveFolderId: DRIVE_FOLDER_ID,
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);
 }
+
+/**
+ * [편의 도구] 기존 스프레드시트에 쌓인 중복 행 일괄 정리 함수
+ * 스프레드시트 상단 함수 목록에서 'cleanupDuplicateRows' 선택 후 [실행]을 누르면,
+ * timestamp + User_ID가 동일한 중복 행들 중 가장 최근 행(메모나 수정사항이 반영된 마지막 행)만 남기고
+ * 이전 중복 행들을 자동으로 삭제합니다.
+ */
+function cleanupDuplicateRows() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 2) {
+    Logger.log("정리할 데이터가 없습니다.");
+    return;
+  }
+
+  var range = sheet.getRange(2, 1, lastRow - 1, 9);
+  var values = range.getDisplayValues();
+  var seenKeys = {};
+  var rowsToDelete = [];
+
+  // 역순으로 순회 (맨 아래에 있는 최신 행을 유지하고 이전 행을 삭제 대상으로 지정)
+  for (var i = values.length - 1; i >= 0; i--) {
+    var rowNum = i + 2;
+    var ts = (values[i][0] || "").trim().replace(/\s+/g, '');
+    var user = (values[i][1] || "").trim();
+    var crop = (values[i][8] || "").trim();
+
+    // 식별 키: 타임스탬프와 사용자ID (또는 파일명)
+    var key = ts + "__" + user;
+    if (crop) key += "__" + crop;
+
+    if (seenKeys[key]) {
+      rowsToDelete.push(rowNum);
+    } else {
+      seenKeys[key] = true;
+    }
+  }
+
+  // 행 삭제 시 번호가 밀리지 않도록 큰 번호(아래)부터 삭제
+  rowsToDelete.sort(function(a, b) { return b - a; });
+  for (var j = 0; j < rowsToDelete.length; j++) {
+    sheet.deleteRow(rowsToDelete[j]);
+  }
+
+  Logger.log("총 " + rowsToDelete.length + "개의 중복 행이 정리되었습니다.");
+}
+
