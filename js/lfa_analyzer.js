@@ -749,8 +749,8 @@ class LFAAnalyzer {
             const line = peakResults[lineKey];
             if (!line || !line.detected || line.index < 0) continue;
 
-            // Very strong signals across the board are accepted directly
-            if (line.height >= 0.035 && line.fwhm >= 4) {
+            // Clear, bona fide bands (height >= 0.016 and fwhm >= 3) are accepted directly
+            if (line.height >= 0.016 && line.fwhm >= 3) {
                 line.horizontalCoverage = 1.0;
                 line.zoneVotes = [true, true, true];
                 continue;
@@ -768,6 +768,7 @@ class LFAAnalyzer {
 
             const drops = [];
             const zoneVotes = [false, false, false];
+            const zoneThresh = Math.max(0.0025, Math.min(0.0045, line.height * 0.3));
 
             if (zoneProfiles && zoneProfiles.L && zoneProfiles.M && zoneProfiles.R) {
                 const zoneKeys = ['L', 'M', 'R'];
@@ -787,8 +788,7 @@ class LFAAnalyzer {
                     const drop = bg > 0 ? (bg - minVal) / bg : 0;
                     drops.push(drop);
 
-                    // A zone confirms line existence if drop is at least 0.0055 (0.55% absorption)
-                    if (drop >= 0.0055) {
+                    if (drop >= zoneThresh) {
                         zoneVotes[zi] = true;
                     }
                 });
@@ -807,47 +807,30 @@ class LFAAnalyzer {
             line.zoneDrops = drops;
             line.horizontalCoverage = Math.round((confirmedCount / 3) * 100) / 100;
 
-            // Reject criteria for T-Line:
-            // 1) A real T-line is a continuous horizontal band across the full membrane:
-            //    For weak/moderate signals (line.height < 0.035), all 3 zones (Left, Mid, Right)
-            //    MUST show synchronized absorption (confirmedCount < 3 rejects single/double-zone specks).
-            // 2) Minimum zone signal: if even one zone is below baseline noise (minDrop < 0.0040),
-            //    it means there is a gap/discontinuity in the line (a localized speck, not a full line).
-            // 3) Horizontal uniformity ratio: minDrop / maxDrop must be >= 0.35.
-            //    Dust/specks cause a huge disparity between the contaminated zone and clean zones.
-            // 4) Peak sharpness: maxDrop cannot be more than 2.5x the median drop.
+            // Reject criteria for faint signals (height < 0.016):
+            // 1) Majority vote: at least 2 out of 3 zones must confirm (confirmedCount >= 2).
+            //    Isolated specks/dust appear only in 1 zone (confirmedCount < 2) and are rejected.
+            // 2) Spot artifact: one zone has a spike, but median/clean zones have virtually zero signal (< 0.0025).
+            // 3) Extreme asymmetry: max drop is more than 3.2x median drop (single-point contamination).
             let isRejected = false;
             let rejectReason = '';
 
             if (lineKey === 'tLine') {
-                const uniformity = maxDrop > 0 ? (minDrop / maxDrop) : 1;
-
-                if (line.height < 0.035) {
-                    if (confirmedCount < 3) {
-                        isRejected = true;
-                        rejectReason = 'incomplete_horizontal_line_fewer_than_3_zones';
-                    } else if (minDrop < 0.0040) {
-                        isRejected = true;
-                        rejectReason = 'discontinuous_line_weak_edge';
-                    } else if (uniformity < 0.35) {
-                        isRejected = true;
-                        rejectReason = 'localized_speck_dust_artifact';
-                    } else if (medDrop > 0 && maxDrop > medDrop * 2.5) {
-                        isRejected = true;
-                        rejectReason = 'extreme_spatial_asymmetry';
-                    }
-                } else {
-                    // Strong signal: still require at least 2 zones and no extreme single-point spike
-                    if (confirmedCount < 2) {
-                        isRejected = true;
-                        rejectReason = 'insufficient_zone_confirmations';
-                    } else if (medDrop > 0 && maxDrop > medDrop * 3.5) {
-                        isRejected = true;
-                        rejectReason = 'extreme_spatial_asymmetry';
-                    }
+                if (confirmedCount < 2) {
+                    isRejected = true;
+                    rejectReason = 'insufficient_zone_confirmations';
+                } else if (medDrop < 0.0028) {
+                    isRejected = true;
+                    rejectReason = 'low_median_zone_signal';
+                } else if (maxDrop >= 0.007 && minDrop < 0.0015 && medDrop < 0.0035) {
+                    isRejected = true;
+                    rejectReason = 'localized_speck_dust_artifact';
+                } else if (medDrop > 0 && maxDrop > medDrop * 3.2) {
+                    isRejected = true;
+                    rejectReason = 'extreme_spatial_asymmetry';
                 }
             } else if (lineKey === 'cLine') {
-                if (confirmedCount < 2 && line.height < 0.020) {
+                if (confirmedCount < 2 && line.height < 0.015) {
                     isRejected = true;
                     rejectReason = 'cline_spatial_failure';
                 }
