@@ -7,7 +7,7 @@
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>YLS - AFP Testing for Cancer | LFA 스마트폰 AI 진단</title>
     <meta name="description" content="YLS AFP Testing for Cancer - LFA 스마트폰 카메라 AI 진단 웹앱">
-    <link rel="stylesheet" href="css/style.css?v=4.6.1">
+    <link rel="stylesheet" href="css/style.css?v=4.7.1">
     <!-- Login 화면의 사용자 추가 버튼용 Noto Sans KR -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -206,12 +206,10 @@
                 <div class="confirm-bottom-panel">
                     <p class="confirm-question">Kit가 카메라 영역에 재대로 들어왔나요?</p>
                     <div class="confirm-btn-row">
-                        <button id="btn-confirm-no" class="btn-confirm-action btn-confirm-no">
-                            아니요<br><small>(재촬영 하기)</small>
-                        </button>
-                        <button id="btn-confirm-yes" class="btn-confirm-action btn-confirm-yes">네</button>
+                        <button id="btn-confirm-no" class="btn-confirm btn-confirm--no">아니오</button>
+                        <button id="btn-confirm-yes" class="btn-confirm btn-confirm--yes">예</button>
                     </div>
-                    <footer class="app-footer">Yellosis Inc. &#169;</footer>
+                    <footer class="app-footer app-footer--confirm">Yellosis Inc. &#169;</footer>
                 </div>
             </div>
         </main>
@@ -222,12 +220,24 @@
         <main id="view-results" class="view">
             <div class="results-content">
                 <h1 class="results-title">검사결과</h1>
-                <p class="results-user-id">User_ID : <span id="result-user-id">yelloi</span> 님</p>
+                
+                <div class="results-header-bar">
+                    <p class="results-user-id">User_ID : <span id="result-user-id">yelloi</span> 님</p>
+                    <div class="results-top-actions">
+                        <button id="btn-toggle-select" class="btn-table-action" type="button">선택</button>
+                        <button id="btn-open-trash" class="btn-table-action btn-trash-action" type="button">
+                            🗑️ 휴지통 <span id="trash-count-badge" class="badge-count hidden">0</span>
+                        </button>
+                    </div>
+                </div>
 
                 <div class="results-table-container">
                     <table class="results-table">
                         <thead>
-                            <tr>
+                            <tr id="results-table-header-row">
+                                <th id="th-checkbox" class="col-checkbox-th hidden">
+                                    <input type="checkbox" id="check-all-results" title="전체 선택">
+                                </th>
                                 <th>검사일시</th>
                                 <th>검사결과</th>
                                 <th>농도(ng/dL)</th>
@@ -241,6 +251,10 @@
                 <div id="results-pagination" class="pagination"></div>
 
                 <div class="results-actions-row">
+                    <div id="results-select-actions" class="results-select-actions hidden">
+                        <button id="btn-delete-selected" class="btn-action-delete" disabled>🗑️ 삭제 (0)</button>
+                        <button id="btn-cancel-select" class="btn-sub-action">선택 취소</button>
+                    </div>
                     <button id="btn-export-csv" class="btn-sub-action">📊 CSV 다운로드</button>
                 </div>
             </div>
@@ -443,6 +457,49 @@
             </div>
         </div>
 
+        <!-- ==========================================
+         TRASH POPUP (휴지통 팝업)
+         ========================================== -->
+        <div id="trash-popup" class="popup-overlay hidden">
+            <div class="popup-card trash-popup-card">
+                <div class="popup-header">
+                    <div class="trash-header-title-box">
+                        <h3 class="popup-title">🗑️ 휴지통</h3>
+                        <span id="trash-total-count" class="trash-count-text">0건</span>
+                    </div>
+                    <button id="btn-trash-close" class="btn-popup-close">✕</button>
+                </div>
+                <div class="trash-notice-banner">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                    </svg>
+                    <span>삭제된 결과는 <strong>7일간 보관</strong> 후 자동 영구 삭제됩니다.</span>
+                </div>
+                <div id="trash-list-container" class="trash-list-container">
+                    <!-- 삭제된 검사 결과 목록이 동적으로 렌더링됩니다 -->
+                </div>
+                <div class="popup-btn-row trash-btn-row">
+                    <button id="btn-trash-restore-all" class="btn-popup-sub">전체 복원</button>
+                    <button id="btn-trash-empty" class="btn-popup-delete">휴지통 비우기</button>
+                    <button id="btn-trash-cancel" class="btn-popup-cancel">닫기</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 삭제 확인 팝업 -->
+        <div id="delete-confirm-popup" class="popup-overlay hidden">
+            <div class="popup-card exit-popup-card">
+                <p id="delete-confirm-msg" class="exit-popup-msg">선택한 검사 결과를 휴지통으로 이동하시겠습니까?</p>
+                <p class="delete-confirm-submsg">휴지통에서 7일간 보관 후 자동 영구 삭제됩니다.</p>
+                <div class="popup-btn-row">
+                    <button id="btn-delete-cancel" class="btn-popup-cancel">취소</button>
+                    <button id="btn-delete-confirm" class="btn-popup-confirm btn-danger">삭제 (휴지통 이동)</button>
+                </div>
+            </div>
+        </div>
+
     </div><!-- /.app-container -->
 
     <!-- 앱 종료 확인 팝업 (Android 뒤로가기) -->
@@ -457,11 +514,11 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/test_samples.js?v=4.6.1"></script>
-    <script src="js/lfa_analyzer.js?v=4.6.1"></script>
-    <script src="js/google_sheets.js?v=4.6.1"></script>
+    <script src="js/test_samples.js?v=4.7.1"></script>
+    <script src="js/lfa_analyzer.js?v=4.7.1"></script>
+    <script src="js/google_sheets.js?v=4.7.1"></script>
     <script src="js/google_user_auth.js?v=1.0.2"></script>
-    <script src="js/app.js?v=4.6.1"></script>
+    <script src="js/app.js?v=4.7.1"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v3d52b47920f24c319d37e2661827c42b1787588026925" integrity="sha512-d9sL6GJLXn6fInD1+TVXhTcQOsmxeHfmHAvwGDIxp5TO+uo1fiWW7mHomMj4MLRlCsJDTqXzWLHJFFlPCEIj/A==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
 </body>
 
