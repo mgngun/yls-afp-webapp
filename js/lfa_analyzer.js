@@ -87,8 +87,9 @@ class LFAAnalyzer {
                 stripROI = this._extractAdaptiveMembraneROI(rectifiedCanvas);
             }
             
-            // 4. Extract Multi-Channel Color Profiles (R, G, B)
-            const { rawProfile, greenProfile, multiProfiles } = this._extractColorProfiles(stripROI);
+            // 4. Extract Multi-Channel Color Profiles (R, G, B) + 3-Zone profiles
+            const { rawProfile, greenProfile, multiProfiles, zoneProfiles } = this._extractColorProfiles(stripROI);
+            stripROI._zoneProfiles = zoneProfiles; // pass to spatial validator
             
             // 5. Multi-Channel + Multi-Scale Top-Hat Signal Extraction
             const { baseline, correctedProfile, topHatProfile } = this._compensateIlluminationRobust(greenProfile, multiProfiles);
@@ -96,7 +97,7 @@ class LFAAnalyzer {
             // 6. Peak Detection with Weak-Line Acceptance
             const peakResults = this._detectPeaksRobust(greenProfile, correctedProfile, topHatProfile);
             
-            // 6.5. Spatial Consistency Validation: reject dots/artifacts
+            // 6.5. Spatial Consistency Validation: reject dots/artifacts using 3-zone majority vote
             this._validateSpatialConsistency(peakResults, stripROI);
             
             // 7. Diagnostic Classification & Concentration
@@ -316,55 +317,85 @@ class LFAAnalyzer {
     }
 
     /**
-     * Extract Multi-Channel Color Profiles (R, G, B) with horizontal center weighting
-     * Smoothing: radius=1 (3-tap) for better peak preservation
+     * Extract Multi-Channel Color Profiles (R, G, B) with horizontal center weighting.
+     * Also extracts three independent zone profiles (Left/Mid/Right) for spatial consistency
+     * voting — used to reject localized artifacts that appear in only one zone.
+     * Smoothing: radius=1 (3-tap) for better peak preservation.
      */
     _extractColorProfiles(stripROI) {
         const { imgData, width, height } = stripROI;
         const data = imgData.data;
 
-        const rProfile = new Float32Array(height);
-        const gProfile = new Float32Array(height);
-        const bProfile = new Float32Array(height);
+        const rProfile   = new Float32Array(height);
+        const gProfile   = new Float32Array(height);
+        const bProfile   = new Float32Array(height);
         const rawProfile = new Float32Array(height);
 
+        // Three independent zone profiles for spatial consistency voting
+        // Left: 15-40%, Mid: 35-65%, Right: 60-85%  (slight overlap is intentional)
+        const gZoneL = new Float32Array(height);
+        const gZoneM = new Float32Array(height);
+        const gZoneR = new Float32Array(height);
+
         const xStart = Math.round(width * 0.15);
-        const xEnd = Math.round(width * 0.85);
+        const xEnd   = Math.round(width * 0.85);
+
+        const zL1 = Math.round(width * 0.15), zL2 = Math.round(width * 0.40);
+        const zM1 = Math.round(width * 0.35), zM2 = Math.round(width * 0.65);
+        const zR1 = Math.round(width * 0.60), zR2 = Math.round(width * 0.85);
 
         for (let y = 0; y < height; y++) {
             const srcY = height - 1 - y; // Bottom = 0 in flow profile
             let sumR = 0, sumG = 0, sumB = 0, sumGray = 0, weightSum = 0;
+            let sgL = 0, wL = 0, sgM = 0, wM = 0, sgR = 0, wR = 0;
+
             for (let x = xStart; x < xEnd; x++) {
                 const normX = (x - xStart) / (xEnd - xStart) - 0.5;
                 const weight = Math.cos(normX * Math.PI);
-                
+
                 const idx = (srcY * width + x) * 4;
                 const r = data[idx];
                 const g = data[idx + 1];
                 const b = data[idx + 2];
-                
-                sumR += r * weight;
-                sumG += g * weight;
-                sumB += b * weight;
+
+                sumR    += r * weight;
+                sumG    += g * weight;
+                sumB    += b * weight;
                 sumGray += (0.299 * r + 0.587 * g + 0.114 * b) * weight;
                 weightSum += weight;
+
+                // Zone accumulators (uniform weight within each zone)
+                if (x >= zL1 && x < zL2) { sgL += g; wL++; }
+                if (x >= zM1 && x < zM2) { sgM += g; wM++; }
+                if (x >= zR1 && x < zR2) { sgR += g; wR++; }
             }
-            rProfile[y] = sumR / weightSum;
-            gProfile[y] = sumG / weightSum;
-            bProfile[y] = sumB / weightSum;
+            rProfile[y]   = sumR    / weightSum;
+            gProfile[y]   = sumG    / weightSum;
+            bProfile[y]   = sumB    / weightSum;
             rawProfile[y] = sumGray / weightSum;
+
+            gZoneL[y] = wL > 0 ? sgL / wL : gProfile[y];
+            gZoneM[y] = wM > 0 ? sgM / wM : gProfile[y];
+            gZoneR[y] = wR > 0 ? sgR / wR : gProfile[y];
         }
 
         // Light smoothing: radius=1 (3-tap) to preserve peak height
-        const smoothR = this._smooth1D(rProfile, 1);
-        const smoothG = this._smooth1D(gProfile, 1);
-        const smoothB = this._smooth1D(bProfile, 1);
+        const smoothR  = this._smooth1D(rProfile,   1);
+        const smoothG  = this._smooth1D(gProfile,   1);
+        const smoothB  = this._smooth1D(bProfile,   1);
         const smoothGray = this._smooth1D(rawProfile, 1);
 
-        return { 
-            rawProfile: smoothGray, 
+        const zoneProfiles = {
+            L: this._smooth1D(gZoneL, 1),
+            M: this._smooth1D(gZoneM, 1),
+            R: this._smooth1D(gZoneR, 1)
+        };
+
+        return {
+            rawProfile: smoothGray,
             greenProfile: smoothG,
-            multiProfiles: { r: smoothR, g: smoothG, b: smoothB }
+            multiProfiles: { r: smoothR, g: smoothG, b: smoothB },
+            zoneProfiles
         };
     }
 
@@ -698,102 +729,91 @@ class LFAAnalyzer {
     }
 
     /**
-     * Spatial Consistency Validation: Reject dots, specks, and localized artifacts
-     * 
-     * Compares peak row pixel intensities to surrounding membrane background.
-     * Prevents false positives from single-sided specks without rejecting true uniform bands.
+     * Spatial Consistency Validation (3-Zone Majority Vote)
+     *
+     * Divides the strip horizontally into three independent zones:
+     *   Left (15-40%), Mid (35-65%), Right (60-85%)
+     * For each candidate peak (T-line or C-line), independently checks whether a
+     * signal drop (absorption) exists near the expected peak position in each zone.
+     * A real membrane line appears uniformly across the full width → all 3 zones show signal.
+     * An artifact (dust, debris, speck) is localized → only 1 zone shows signal.
+     *
+     * Decision rule:
+     *   • If ≥ 2 of 3 zones confirm a peak → valid (majority vote passes)
+     *   • If only 1 zone confirms → reject as localized artifact
+     *   • Strong peaks (height ≥ 0.025 AND fwhm ≥ 3) skip voting and are always accepted
      */
     _validateSpatialConsistency(peakResults, stripROI) {
         if (!stripROI || !stripROI.imgData) return;
-        const { imgData, width, height } = stripROI;
-        const data = imgData.data;
-        
-        const xStart = Math.round(width * 0.12);
-        const xEnd = Math.round(width * 0.88);
-        const xMid = Math.round((xStart + xEnd) / 2);
-        
+        const { height } = stripROI;
+        const zoneProfiles = stripROI._zoneProfiles;
+
         for (const lineKey of ['cLine', 'tLine']) {
             const line = peakResults[lineKey];
             if (!line || !line.detected || line.index < 0) continue;
-            
-            // Convert flow profile index to image y (bottom = 0 in flow)
-            const peakY = height - 1 - line.index;
-            if (peakY < 2 || peakY >= height - 2) continue;
-            
-            // If the signal is very strong and clearly defined, it is definitely a valid line
+
+            // Strong, clearly-defined signals are always valid — skip voting
             if (line.height >= 0.025 && line.fwhm >= 3) {
                 line.horizontalCoverage = 1.0;
+                line.zoneVotes = [true, true, true];
                 continue;
             }
-            
-            // Background reference rows (above and below the peak FWHM zone)
-            const offset = Math.max(5, Math.round(line.fwhm * 1.2));
-            const bgRows = [
-                Math.max(0, peakY - offset),
-                Math.min(height - 1, peakY + offset)
-            ];
-            
-            let bgSumLeft = 0, bgCountLeft = 0;
-            let bgSumRight = 0, bgCountRight = 0;
-            
-            for (const bgY of bgRows) {
-                for (let x = xStart; x < xMid; x++) {
-                    const idx = (bgY * width + x) * 4;
-                    bgSumLeft += 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-                    bgCountLeft++;
-                }
-                for (let x = xMid; x < xEnd; x++) {
-                    const idx = (bgY * width + x) * 4;
-                    bgSumRight += 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-                    bgCountRight++;
-                }
+
+            const peakIdx = line.index;
+            const halfFwhm = Math.max(3, Math.round(line.fwhm / 2));
+            const searchStart = Math.max(0, peakIdx - halfFwhm);
+            const searchEnd   = Math.min(height - 1, peakIdx + halfFwhm);
+            // Background window: just outside the FWHM zone
+            const bgOffset = Math.max(5, Math.round(line.fwhm * 1.5));
+            const bgIdxA   = Math.max(0, peakIdx - bgOffset);
+            const bgIdxB   = Math.min(height - 1, peakIdx + bgOffset);
+
+            const zoneVotes = [false, false, false];
+            let confirmedZones = 0;
+
+            if (zoneProfiles) {
+                const zoneKeys = ['L', 'M', 'R'];
+                zoneKeys.forEach((key, zi) => {
+                    const prof = zoneProfiles[key];
+                    if (!prof) return;
+
+                    // Background level for this zone (average of two reference points)
+                    const bg = (prof[bgIdxA] + prof[bgIdxB]) / 2;
+
+                    // Find the minimum (= maximum absorption = darkest) within search window
+                    let minVal = prof[searchStart];
+                    for (let i = searchStart + 1; i <= searchEnd; i++) {
+                        if (prof[i] < minVal) minVal = prof[i];
+                    }
+
+                    // Signal drop relative to background brightness
+                    const drop = bg - minVal;
+                    const dropRatio = bg > 0 ? drop / bg : 0;
+
+                    // A zone "votes" if it sees a meaningful absorption drop
+                    // Dynamic threshold: proportional to detected line height, minimum 0.3%
+                    const voteThreshold = Math.max(0.003, line.height * 0.25);
+                    if (dropRatio >= voteThreshold) {
+                        zoneVotes[zi] = true;
+                        confirmedZones++;
+                    }
+                });
+            } else {
+                // Fallback: no zone profiles available → treat as passed (legacy behaviour)
+                confirmedZones = 3;
+                zoneVotes.fill(true);
             }
-            
-            const bgLeft = bgCountLeft > 0 ? bgSumLeft / bgCountLeft : 200;
-            const bgRight = bgCountRight > 0 ? bgSumRight / bgCountRight : 200;
-            const bgTotal = (bgLeft + bgRight) / 2;
-            
-            // Measure peak row brightness on Left and Right
-            let peakSumLeft = 0, pCountLeft = 0;
-            let peakSumRight = 0, pCountRight = 0;
-            let darkPixelCount = 0;
-            const totalPixels = xEnd - xStart;
-            
-            // Threshold for dark pixel: at least 1.5% darker than background
-            const darkThreshold = bgTotal * 0.985;
-            
-            for (let x = xStart; x < xMid; x++) {
-                const idx = (peakY * width + x) * 4;
-                const g = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-                peakSumLeft += g;
-                pCountLeft++;
-                if (g < darkThreshold) darkPixelCount++;
-            }
-            for (let x = xMid; x < xEnd; x++) {
-                const idx = (peakY * width + x) * 4;
-                const g = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-                peakSumRight += g;
-                pCountRight++;
-                if (g < darkThreshold) darkPixelCount++;
-            }
-            
-            const peakLeft = pCountLeft > 0 ? peakSumLeft / pCountLeft : 200;
-            const peakRight = pCountRight > 0 ? peakSumRight / pCountRight : 200;
-            
-            const dropLeft = bgLeft - peakLeft;
-            const dropRight = bgRight - peakRight;
-            const coverage = darkPixelCount / (totalPixels || 1);
-            line.horizontalCoverage = Math.round(coverage * 100) / 100;
-            
-            // Specks / dust artifacts have significant drop on only one extreme side while the other side is flat/negative
-            const isSingleSidedDot = (dropLeft > 12 && dropRight < -2) || (dropRight > 12 && dropLeft < -2);
-            
-            if (isSingleSidedDot && line.height < 0.025) {
+
+            line.zoneVotes = zoneVotes;
+            line.horizontalCoverage = Math.round((confirmedZones / 3) * 100) / 100;
+
+            // Majority vote: need at least 2 of 3 zones
+            if (confirmedZones < 2) {
                 line.detected = false;
-                line.rejectedReason = 'localized_speck_artifact';
+                line.rejectedReason = 'zone_vote_failed_localized_artifact';
             }
         }
-        
+
         // Recompute SNR and tcRatio after spatial validation
         if (peakResults.cLine.detected && peakResults.tLine.detected) {
             const aucRatio = (peakResults.cLine.auc > 0) ? (peakResults.tLine.auc / peakResults.cLine.auc) : 0;
@@ -803,9 +823,9 @@ class LFAAnalyzer {
             peakResults.tcRatio = 0;
             peakResults.relativeRatio = 0;
         }
-        
-        const snr = peakResults.bgNoiseSigma > 0.0001 
-            ? (peakResults.cLine.height / peakResults.bgNoiseSigma) 
+
+        const snr = peakResults.bgNoiseSigma > 0.0001
+            ? (peakResults.cLine.height / peakResults.bgNoiseSigma)
             : 0.0;
         peakResults.snr = snr;
     }
