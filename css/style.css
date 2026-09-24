@@ -1680,6 +1680,19 @@ body {
     flex: 0 0 160px;
 }
 
+/* 그래프 팝업 삭제 버튼 — 빨간색 강조 */
+.btn-popup-delete-graph {
+    background: #fee2e2 !important;
+    color: #dc2626 !important;
+    border: 1px solid #fca5a5 !important;
+    font-weight: 700 !important;
+}
+
+.btn-popup-delete-graph:hover {
+    background: #fecaca !important;
+    border-color: #f87171 !important;
+}
+
 /* Graph Popup */
 .graph-popup-card {
     max-width: 400px;
