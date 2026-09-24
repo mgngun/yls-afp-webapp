@@ -331,8 +331,8 @@ class LFAAnalyzer {
         const bProfile   = new Float32Array(height);
         const rawProfile = new Float32Array(height);
 
-        // Three independent zone profiles for spatial consistency voting
-        // Left: 15-40%, Mid: 35-65%, Right: 60-85%  (slight overlap is intentional)
+        // Three independent non-overlapping scan zones (Left, Mid, Right virtual scan lanes)
+        // Left: 18-38%, Center: 41-59%, Right: 62-82%
         const gZoneL = new Float32Array(height);
         const gZoneM = new Float32Array(height);
         const gZoneR = new Float32Array(height);
@@ -340,9 +340,9 @@ class LFAAnalyzer {
         const xStart = Math.round(width * 0.15);
         const xEnd   = Math.round(width * 0.85);
 
-        const zL1 = Math.round(width * 0.15), zL2 = Math.round(width * 0.40);
-        const zM1 = Math.round(width * 0.35), zM2 = Math.round(width * 0.65);
-        const zR1 = Math.round(width * 0.60), zR2 = Math.round(width * 0.85);
+        const zL1 = Math.round(width * 0.18), zL2 = Math.round(width * 0.38);
+        const zM1 = Math.round(width * 0.41), zM2 = Math.round(width * 0.59);
+        const zR1 = Math.round(width * 0.62), zR2 = Math.round(width * 0.82);
 
         for (let y = 0; y < height; y++) {
             const srcY = height - 1 - y; // Bottom = 0 in flow profile
@@ -364,7 +364,7 @@ class LFAAnalyzer {
                 sumGray += (0.299 * r + 0.587 * g + 0.114 * b) * weight;
                 weightSum += weight;
 
-                // Zone accumulators (uniform weight within each zone)
+                // Zone accumulators (independent virtual scan lanes)
                 if (x >= zL1 && x < zL2) { sgL += g; wL++; }
                 if (x >= zM1 && x < zM2) { sgM += g; wM++; }
                 if (x >= zR1 && x < zR2) { sgR += g; wR++; }
@@ -761,7 +761,7 @@ class LFAAnalyzer {
             const searchStart = Math.max(0, peakIdx - 2);
             const searchEnd   = Math.min(height - 1, peakIdx + 2);
 
-            // Background baseline: measure local flat background above & below peak
+            // Background baseline: measure local flat background above & below peak (3-tap smoothed)
             const bgOffset = Math.max(6, Math.round((line.fwhm || 8) * 1.5));
             const bgIdxA   = Math.max(0, peakIdx - bgOffset);
             const bgIdxB   = Math.min(height - 1, peakIdx + bgOffset);
@@ -773,7 +773,9 @@ class LFAAnalyzer {
                 const zoneKeys = ['L', 'M', 'R'];
                 zoneKeys.forEach((key, zi) => {
                     const prof = zoneProfiles[key];
-                    const bg = (prof[bgIdxA] + prof[bgIdxB]) / 2;
+                    const bgA = (prof[Math.max(0, bgIdxA - 1)] + prof[bgIdxA] + prof[Math.min(height - 1, bgIdxA + 1)]) / 3;
+                    const bgB = (prof[Math.max(0, bgIdxB - 1)] + prof[bgIdxB] + prof[Math.min(height - 1, bgIdxB + 1)]) / 3;
+                    const bg = (bgA + bgB) / 2;
 
                     // Find minimum value (maximum absorption) in immediate vicinity of peak
                     let minVal = prof[peakIdx];
@@ -785,8 +787,8 @@ class LFAAnalyzer {
                     const drop = bg > 0 ? (bg - minVal) / bg : 0;
                     drops.push(drop);
 
-                    // A zone confirms line existence if drop is at least 0.005 (0.5% absorption)
-                    if (drop >= 0.005) {
+                    // A zone confirms line existence if drop is at least 0.0055 (0.55% absorption)
+                    if (drop >= 0.0055) {
                         zoneVotes[zi] = true;
                     }
                 });
@@ -806,26 +808,43 @@ class LFAAnalyzer {
             line.horizontalCoverage = Math.round((confirmedCount / 3) * 100) / 100;
 
             // Reject criteria for T-Line:
-            // 1) Majority vote failed: fewer than 2 zones confirmed (confirmedCount < 2)
-            // 2) Spot/Dust artifact: one zone has a noticeable drop, but at least one zone is flat (minDrop < 0.0025)
-            //    and median drop is insufficient (< 0.0055)
-            // 3) Extreme asymmetry: max drop is more than 3.5x median drop (single-point contamination)
+            // 1) A real T-line is a continuous horizontal band across the full membrane:
+            //    For weak/moderate signals (line.height < 0.035), all 3 zones (Left, Mid, Right)
+            //    MUST show synchronized absorption (confirmedCount < 3 rejects single/double-zone specks).
+            // 2) Minimum zone signal: if even one zone is below baseline noise (minDrop < 0.0040),
+            //    it means there is a gap/discontinuity in the line (a localized speck, not a full line).
+            // 3) Horizontal uniformity ratio: minDrop / maxDrop must be >= 0.35.
+            //    Dust/specks cause a huge disparity between the contaminated zone and clean zones.
+            // 4) Peak sharpness: maxDrop cannot be more than 2.5x the median drop.
             let isRejected = false;
             let rejectReason = '';
 
             if (lineKey === 'tLine') {
-                if (confirmedCount < 2) {
-                    isRejected = true;
-                    rejectReason = 'insufficient_zone_confirmations';
-                } else if (medDrop < 0.0055) {
-                    isRejected = true;
-                    rejectReason = 'low_median_zone_signal';
-                } else if (maxDrop >= 0.008 && minDrop < 0.0025) {
-                    isRejected = true;
-                    rejectReason = 'localized_speck_dust_artifact';
-                } else if (medDrop > 0 && maxDrop > medDrop * 3.5 && line.height < 0.025) {
-                    isRejected = true;
-                    rejectReason = 'extreme_spatial_asymmetry';
+                const uniformity = maxDrop > 0 ? (minDrop / maxDrop) : 1;
+
+                if (line.height < 0.035) {
+                    if (confirmedCount < 3) {
+                        isRejected = true;
+                        rejectReason = 'incomplete_horizontal_line_fewer_than_3_zones';
+                    } else if (minDrop < 0.0040) {
+                        isRejected = true;
+                        rejectReason = 'discontinuous_line_weak_edge';
+                    } else if (uniformity < 0.35) {
+                        isRejected = true;
+                        rejectReason = 'localized_speck_dust_artifact';
+                    } else if (medDrop > 0 && maxDrop > medDrop * 2.5) {
+                        isRejected = true;
+                        rejectReason = 'extreme_spatial_asymmetry';
+                    }
+                } else {
+                    // Strong signal: still require at least 2 zones and no extreme single-point spike
+                    if (confirmedCount < 2) {
+                        isRejected = true;
+                        rejectReason = 'insufficient_zone_confirmations';
+                    } else if (medDrop > 0 && maxDrop > medDrop * 3.5) {
+                        isRejected = true;
+                        rejectReason = 'extreme_spatial_asymmetry';
+                    }
                 }
             } else if (lineKey === 'cLine') {
                 if (confirmedCount < 2 && line.height < 0.020) {

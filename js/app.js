@@ -38,6 +38,9 @@ document.addEventListener('DOMContentLoaded', () => {
         currentPage: 1,
         memoEditId: null,
         activeGraphRecord: null,
+        // Selection & Trash states
+        isSelectMode: false,
+        selectedRecordIds: new Set(),
         // Zoom control states
         currentZoom: 1.0,
         minZoom: 1.0,
@@ -155,6 +158,28 @@ document.addEventListener('DOMContentLoaded', () => {
         btnCalNextMonth: document.getElementById('btn-cal-next-month'),
         calMonthTitle: document.getElementById('cal-month-title'),
         calDaysGrid: document.getElementById('cal-days-grid'),
+        // Results Selection & Trash
+        btnToggleSelect: document.getElementById('btn-toggle-select'),
+        btnOpenTrash: document.getElementById('btn-open-trash'),
+        trashCountBadge: document.getElementById('trash-count-badge'),
+        thCheckbox: document.getElementById('th-checkbox'),
+        checkAllResults: document.getElementById('check-all-results'),
+        resultsSelectActions: document.getElementById('results-select-actions'),
+        btnDeleteSelected: document.getElementById('btn-delete-selected'),
+        btnCancelSelect: document.getElementById('btn-cancel-select'),
+        // Trash Popup
+        trashPopup: document.getElementById('trash-popup'),
+        btnTrashClose: document.getElementById('btn-trash-close'),
+        btnTrashCancel: document.getElementById('btn-trash-cancel'),
+        trashTotalCount: document.getElementById('trash-total-count'),
+        trashListContainer: document.getElementById('trash-list-container'),
+        btnTrashRestoreAll: document.getElementById('btn-trash-restore-all'),
+        btnTrashEmpty: document.getElementById('btn-trash-empty'),
+        // Delete Confirm Popup
+        deleteConfirmPopup: document.getElementById('delete-confirm-popup'),
+        deleteConfirmMsg: document.getElementById('delete-confirm-msg'),
+        btnDeleteConfirm: document.getElementById('btn-delete-confirm'),
+        btnDeleteCancel: document.getElementById('btn-delete-cancel'),
         // Timesetting extras
         btnViewResults: document.getElementById('btn-view-results'),
         // Login -- 사용자 추가 / 인라인 에러
@@ -1112,11 +1137,98 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // TRASH & SELECTION MANAGEMENT (휴지통 및 7일 자동 삭제 & 복원)
+    // ─────────────────────────────────────────────────────────────
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+    /**
+     * 7일이 경과한 휴지통 항목을 자동 영구 삭제합니다.
+     */
+    function cleanupExpiredTrash() {
+        try {
+            const raw = JSON.parse(localStorage.getItem('yls_lfa_trash') || '[]');
+            const now = Date.now();
+            const valid = raw.filter(item => {
+                const delTime = item.deletedAt ? new Date(item.deletedAt).getTime() : 0;
+                return (now - delTime) < SEVEN_DAYS_MS;
+            });
+            if (valid.length !== raw.length) {
+                localStorage.setItem('yls_lfa_trash', JSON.stringify(valid));
+            }
+            return valid;
+        } catch (e) {
+            console.warn('Trash cleanup error:', e);
+            return [];
+        }
+    }
+
+    /**
+     * 휴지통 상단 뱃지 숫자 갱신
+     */
+    function updateTrashBadge() {
+        const trash = cleanupExpiredTrash();
+        const count = trash.length;
+        if (el.trashCountBadge) {
+            el.trashCountBadge.textContent = count;
+            if (count > 0) {
+                el.trashCountBadge.classList.remove('hidden');
+            } else {
+                el.trashCountBadge.classList.add('hidden');
+            }
+        }
+    }
+
+    function toggleSelectMode() {
+        state.isSelectMode = !state.isSelectMode;
+        state.selectedRecordIds.clear();
+        updateSelectModeUI();
+        renderResultsTable();
+    }
+
+    function exitSelectMode() {
+        state.isSelectMode = false;
+        state.selectedRecordIds.clear();
+        updateSelectModeUI();
+        renderResultsTable();
+    }
+
+    function updateSelectModeUI() {
+        if (state.isSelectMode) {
+            if (el.btnToggleSelect) {
+                el.btnToggleSelect.classList.add('active');
+                el.btnToggleSelect.textContent = '선택 취소';
+            }
+            if (el.thCheckbox) el.thCheckbox.classList.remove('hidden');
+            if (el.resultsSelectActions) el.resultsSelectActions.classList.remove('hidden');
+            if (el.btnExportCsv) el.btnExportCsv.classList.add('hidden');
+            if (el.checkAllResults) el.checkAllResults.checked = false;
+            updateDeleteButtonState();
+        } else {
+            if (el.btnToggleSelect) {
+                el.btnToggleSelect.classList.remove('active');
+                el.btnToggleSelect.textContent = '선택';
+            }
+            if (el.thCheckbox) el.thCheckbox.classList.add('hidden');
+            if (el.resultsSelectActions) el.resultsSelectActions.classList.add('hidden');
+            if (el.btnExportCsv) el.btnExportCsv.classList.remove('hidden');
+        }
+    }
+
+    function updateDeleteButtonState() {
+        const count = state.selectedRecordIds.size;
+        if (el.btnDeleteSelected) {
+            el.btnDeleteSelected.disabled = (count === 0);
+            el.btnDeleteSelected.textContent = `🗑️ 삭제 (${count})`;
+        }
+    }
+
     function renderResultsTable() {
         const tbody = el.resultsBody;
         if (!tbody) return;
 
         if (el.resultUserId) el.resultUserId.textContent = state.currentUser.username;
+        updateTrashBadge();
 
         const rawHistory = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
         const history = sortHistoryByDateDesc(rawHistory);
@@ -1129,13 +1241,21 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = '';
 
         if (history.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="empty-msg">검사 기록이 없습니다.</td></tr>';
+            const colspan = state.isSelectMode ? 5 : 4;
+            tbody.innerHTML = `<tr><td colspan="${colspan}" class="empty-msg">검사 기록이 없습니다.</td></tr>`;
             renderPagination(totalPages);
             return;
         }
 
+        // 전체 선택 체크박스 상태 동기화
+        if (state.isSelectMode && el.checkAllResults) {
+            const allChecked = items.length > 0 && items.every(r => state.selectedRecordIds.has(r.id));
+            el.checkAllResults.checked = allChecked;
+        }
+
         items.forEach(rec => {
             const tr = document.createElement('tr');
+            const isChecked = state.selectedRecordIds.has(rec.id);
 
             let cls = 'col-negative', label = '음성', val = '-';
             if (rec.result === '양성' || rec.result === 'positive') {
@@ -1148,7 +1268,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const hasMemo = !!(rec.memo && String(rec.memo).trim());
             const memoLabel = hasMemo ? '보기' : '';
 
+            let checkHtml = '';
+            if (state.isSelectMode) {
+                checkHtml = `<td class="col-checkbox-td"><input type="checkbox" class="result-row-check" data-id="${rec.id}" ${isChecked ? 'checked' : ''}></td>`;
+            }
+
             tr.innerHTML = `
+                ${checkHtml}
                 <td class="col-date">${rec.timestamp || '-'}</td>
                 <td class="${cls}">${label}</td>
                 <td>${val}</td>
@@ -1157,8 +1283,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
             tr.addEventListener('click', e => {
                 if (e.target.classList.contains('memo-cell')) return;
-                showGraphPopup(rec);
+
+                if (state.isSelectMode) {
+                    // 선택 모드: 행 클릭 시 체크박스 토글
+                    const chk = tr.querySelector('.result-row-check');
+                    const willCheck = !state.selectedRecordIds.has(rec.id);
+                    if (willCheck) {
+                        state.selectedRecordIds.add(rec.id);
+                    } else {
+                        state.selectedRecordIds.delete(rec.id);
+                    }
+                    if (chk) chk.checked = willCheck;
+                    updateDeleteButtonState();
+
+                    if (el.checkAllResults) {
+                        el.checkAllResults.checked = items.every(r => state.selectedRecordIds.has(r.id));
+                    }
+                } else {
+                    // 일반 모드: 상세 분석 그래프 팝업 오픈
+                    showGraphPopup(rec);
+                }
             });
+
+            // 체크박스 직접 클릭 시 이벤트 전파 방지 및 상태 처리
+            const rowCheckbox = tr.querySelector('.result-row-check');
+            if (rowCheckbox) {
+                rowCheckbox.addEventListener('click', e => {
+                    e.stopPropagation();
+                    if (rowCheckbox.checked) {
+                        state.selectedRecordIds.add(rec.id);
+                    } else {
+                        state.selectedRecordIds.delete(rec.id);
+                    }
+                    updateDeleteButtonState();
+                    if (el.checkAllResults) {
+                        el.checkAllResults.checked = items.every(r => state.selectedRecordIds.has(r.id));
+                    }
+                });
+            }
 
             const memoSpan = tr.querySelector('.memo-cell');
             if (memoSpan) {
@@ -1206,7 +1368,275 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (el.btnReturnHome) {
-        el.btnReturnHome.addEventListener('click', () => navigateTo('timesetting'));
+        el.btnReturnHome.addEventListener('click', () => {
+            exitSelectMode();
+            navigateTo('timesetting');
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // TRASH & SELECTION EVENT HANDLERS
+    // ─────────────────────────────────────────────────────────────
+    if (el.btnToggleSelect) {
+        el.btnToggleSelect.addEventListener('click', toggleSelectMode);
+    }
+
+    if (el.btnCancelSelect) {
+        el.btnCancelSelect.addEventListener('click', exitSelectMode);
+    }
+
+    if (el.checkAllResults) {
+        el.checkAllResults.addEventListener('change', () => {
+            const rawHistory = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
+            const history = sortHistoryByDateDesc(rawHistory);
+            const start = (state.currentPage - 1) * PAGE_SIZE;
+            const items = history.slice(start, start + PAGE_SIZE);
+
+            if (el.checkAllResults.checked) {
+                items.forEach(r => state.selectedRecordIds.add(r.id));
+            } else {
+                items.forEach(r => state.selectedRecordIds.delete(r.id));
+            }
+            updateDeleteButtonState();
+            renderResultsTable();
+        });
+    }
+
+    function openDeleteConfirmPopup() {
+        const count = state.selectedRecordIds.size;
+        if (count === 0) return;
+        if (el.deleteConfirmMsg) {
+            el.deleteConfirmMsg.textContent = `선택한 ${count}개의 검사 결과를 휴지통으로 이동하시겠습니까?`;
+        }
+        if (el.deleteConfirmPopup) el.deleteConfirmPopup.classList.remove('hidden');
+    }
+
+    function closeDeleteConfirmPopup() {
+        if (el.deleteConfirmPopup) el.deleteConfirmPopup.classList.add('hidden');
+    }
+
+    function confirmDeleteRecords() {
+        const selectedIds = new Set(state.selectedRecordIds);
+        const count = selectedIds.size;
+        if (count === 0) return;
+
+        const rawHistory = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
+        const trash = cleanupExpiredTrash();
+
+        const remainingHistory = [];
+        const movedToTrash = [];
+        const nowIso = new Date().toISOString();
+
+        rawHistory.forEach(rec => {
+            if (selectedIds.has(rec.id)) {
+                movedToTrash.push({
+                    ...rec,
+                    deletedAt: nowIso
+                });
+            } else {
+                remainingHistory.push(rec);
+            }
+        });
+
+        // 1. 로컬 저장소 갱신
+        localStorage.setItem('yls_lfa_history', JSON.stringify(remainingHistory));
+        localStorage.setItem('yls_lfa_trash', JSON.stringify([...movedToTrash, ...trash]));
+
+        // 2. 서버 동기화 (휴지통 이동)
+        if (state.sheetsSync && typeof state.sheetsSync.moveToTrash === 'function') {
+            state.sheetsSync.moveToTrash(movedToTrash).catch(err => {
+                console.warn('Server trash sync error:', err);
+            });
+        }
+
+        closeDeleteConfirmPopup();
+        exitSelectMode();
+        updateTrashBadge();
+        renderResultsTable();
+
+        showToast(`선택한 ${count}개의 검사 결과가 휴지통으로 이동되었습니다.`);
+    }
+
+    if (el.btnDeleteSelected) {
+        el.btnDeleteSelected.addEventListener('click', openDeleteConfirmPopup);
+    }
+    if (el.btnDeleteCancel) {
+        el.btnDeleteCancel.addEventListener('click', closeDeleteConfirmPopup);
+    }
+    if (el.btnDeleteConfirm) {
+        el.btnDeleteConfirm.addEventListener('click', confirmDeleteRecords);
+    }
+    if (el.deleteConfirmPopup) {
+        el.deleteConfirmPopup.addEventListener('click', e => {
+            if (e.target === el.deleteConfirmPopup) closeDeleteConfirmPopup();
+        });
+    }
+
+    // ── Trash Popup Logic ──
+    function openTrashPopup() {
+        renderTrashList();
+        if (el.trashPopup) el.trashPopup.classList.remove('hidden');
+    }
+
+    function closeTrashPopup() {
+        if (el.trashPopup) el.trashPopup.classList.add('hidden');
+    }
+
+    function renderTrashList() {
+        if (!el.trashListContainer) return;
+        const trash = cleanupExpiredTrash();
+        const total = trash.length;
+
+        if (el.trashTotalCount) {
+            el.trashTotalCount.textContent = `${total}건`;
+        }
+        updateTrashBadge();
+
+        if (total === 0) {
+            el.trashListContainer.innerHTML = '<div class="trash-empty-state">휴지통이 비어 있습니다.</div>';
+            if (el.btnTrashRestoreAll) el.btnTrashRestoreAll.disabled = true;
+            if (el.btnTrashEmpty) el.btnTrashEmpty.disabled = true;
+            return;
+        }
+
+        if (el.btnTrashRestoreAll) el.btnTrashRestoreAll.disabled = false;
+        if (el.btnTrashEmpty) el.btnTrashEmpty.disabled = false;
+
+        const now = Date.now();
+        el.trashListContainer.innerHTML = '';
+
+        trash.forEach(rec => {
+            const delTime = rec.deletedAt ? new Date(rec.deletedAt).getTime() : now;
+            const elapsedDays = Math.floor((now - delTime) / (24 * 60 * 60 * 1000));
+            const daysLeft = Math.max(1, 7 - elapsedDays);
+
+            let badgeCls = 'fail', badgeLabel = '실패';
+            if (rec.result === '양성' || rec.result === 'positive') {
+                badgeCls = 'positive'; badgeLabel = '양성';
+            } else if (rec.result === '음성' || rec.result === 'negative') {
+                badgeCls = 'negative'; badgeLabel = '음성';
+            }
+
+            const conc = (rec.concentrationStr && rec.concentrationStr !== '-') ? `${rec.concentrationStr} ng/dL` : '-';
+
+            const card = document.createElement('div');
+            card.className = 'trash-item-card';
+            card.innerHTML = `
+                <div class="trash-item-info">
+                    <div class="trash-item-header">
+                        <span class="trash-item-date">${rec.timestamp || '-'}</span>
+                        <span class="trash-badge ${badgeCls}">${badgeLabel}</span>
+                    </div>
+                    <div class="trash-item-meta">
+                        <span>농도: ${conc}</span>
+                        <span class="trash-expire-tag">${daysLeft}일 후 영구삭제</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-trash-restore-item" data-id="${rec.id}">복원</button>
+            `;
+
+            const btnRestore = card.querySelector('.btn-trash-restore-item');
+            if (btnRestore) {
+                btnRestore.addEventListener('click', () => {
+                    restoreRecordFromTrash(rec.id);
+                });
+            }
+
+            el.trashListContainer.appendChild(card);
+        });
+    }
+
+    function restoreRecordFromTrash(recordId) {
+        const trash = cleanupExpiredTrash();
+        const targetIdx = trash.findIndex(r => r.id === recordId);
+        if (targetIdx < 0) return;
+
+        const restored = { ...trash[targetIdx] };
+        delete restored.deletedAt;
+
+        // 휴지통에서 제거
+        trash.splice(targetIdx, 1);
+        localStorage.setItem('yls_lfa_trash', JSON.stringify(trash));
+
+        // 기존 검사 결과로 복원 (원래 일시분초 그대로 복귀)
+        const rawHistory = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
+        rawHistory.push(restored);
+        const sorted = sortHistoryByDateDesc(rawHistory);
+        localStorage.setItem('yls_lfa_history', JSON.stringify(sorted));
+
+        // 서버 동기화 (복원)
+        if (state.sheetsSync && typeof state.sheetsSync.restoreFromTrash === 'function') {
+            state.sheetsSync.restoreFromTrash(restored).catch(err => {
+                console.warn('Server restore sync error:', err);
+            });
+        }
+
+        showToast(`'${restored.timestamp}' 검사 결과가 원래대로 복원되었습니다.`);
+        renderTrashList();
+        renderResultsTable();
+    }
+
+    function restoreAllTrash() {
+        const trash = cleanupExpiredTrash();
+        if (trash.length === 0) return;
+
+        const rawHistory = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
+        const restoredItems = trash.map(item => {
+            const r = { ...item };
+            delete r.deletedAt;
+            return r;
+        });
+
+        const combined = sortHistoryByDateDesc([...rawHistory, ...restoredItems]);
+        localStorage.setItem('yls_lfa_history', JSON.stringify(combined));
+        localStorage.setItem('yls_lfa_trash', JSON.stringify([]));
+
+        // 서버 동기화
+        if (state.sheetsSync && typeof state.sheetsSync.restoreFromTrash === 'function') {
+            restoredItems.forEach(item => {
+                state.sheetsSync.restoreFromTrash(item).catch(() => {});
+            });
+        }
+
+        showToast(`${restoredItems.length}개의 검사 결과가 모두 복원되었습니다.`);
+        renderTrashList();
+        renderResultsTable();
+    }
+
+    function emptyTrash() {
+        const trash = cleanupExpiredTrash();
+        if (trash.length === 0) return;
+
+        if (!confirm('휴지통을 비우시겠습니까? 비워진 항목은 영구 삭제되어 다시 복원할 수 없습니다.')) {
+            return;
+        }
+
+        localStorage.setItem('yls_lfa_trash', JSON.stringify([]));
+
+        showToast('휴지통이 비워졌습니다.');
+        renderTrashList();
+        renderResultsTable();
+    }
+
+    if (el.btnOpenTrash) {
+        el.btnOpenTrash.addEventListener('click', openTrashPopup);
+    }
+    if (el.btnTrashClose) {
+        el.btnTrashClose.addEventListener('click', closeTrashPopup);
+    }
+    if (el.btnTrashCancel) {
+        el.btnTrashCancel.addEventListener('click', closeTrashPopup);
+    }
+    if (el.trashPopup) {
+        el.trashPopup.addEventListener('click', e => {
+            if (e.target === el.trashPopup) closeTrashPopup();
+        });
+    }
+    if (el.btnTrashRestoreAll) {
+        el.btnTrashRestoreAll.addEventListener('click', restoreAllTrash);
+    }
+    if (el.btnTrashEmpty) {
+        el.btnTrashEmpty.addEventListener('click', emptyTrash);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -1701,12 +2131,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
                                 if (oldResult !== newResult && state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
                                     showToast(`판정 변경 (${oldResult} ➔ ${newResult}): 서버 동기화 중...`);
+                                    const base64Data = (record.cropImageDataUrl && record.cropImageDataUrl.startsWith('data:image/'))
+                                        ? record.cropImageDataUrl : '';
                                     state.sheetsSync.syncResult(
                                         analysisRes,
                                         state.currentUser,
                                         record.memo || '',
                                         record.cropFilename || '',
-                                        record.cropImageDataUrl || imgSrc,
+                                        base64Data,
                                         record.timestamp,
                                         {
                                             rowIndex: record.rowIndex || null,

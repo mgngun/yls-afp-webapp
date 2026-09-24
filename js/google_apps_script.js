@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * YLS LFA AFP 진단 키트 - Google Apps Script (GAS) 백엔드 코드
- * 구글 시트 저장/수정(중복 방지 & rowIndex 덮어쓰기) + 구글 드라이브 이미지 연동 (v4.6.0)
+ * 구글 시트 저장/수정 + 휴지통 보관 & 7일 자동 영구 삭제 & 복원 지원 (v4.7.1)
  * ============================================================================
  * 
  * [설정된 구글 리소스]
@@ -22,16 +22,53 @@ var DRIVE_FOLDER_ID = "1U-3jUSs7tutgovrNeOZE7P5Y_KuBqlwI";
 
 /**
  * [권한 승인 전용 함수]
- * 이 함수는 구글 권한 승인 창을 강제로 띄우기 위한 함수입니다.
- * 툴바에서 'authorizeDriveApp'을 선택하고 [실행]을 누르면 즉시 구글 계정 권한 승인 창이 뜹니다.
  */
-function authorizeDriveApp() {
-  // DriveApp 및 SpreadsheetApp을 직접 호출하여 강제로 권한 팝업을 발생시킴
-  var folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
-  var file = folder.createFile("auth_test.txt", "OK");
-  file.setTrashed(true);
-  SpreadsheetApp.getActiveSpreadsheet();
-  Logger.log("🎉 구글 드라이브 및 스프레드시트 권한 승인이 성공적으로 완료되었습니다!");
+function testDrivePermission() {
+  if (DRIVE_FOLDER_ID) {
+    var folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+    Logger.log("성공! 드라이브 폴더 연결 확인: " + folder.getName());
+  }
+}
+
+/**
+ * [메인 시트 탐색 헬퍼]
+ * Trash(휴지통)나 Users 등 보조 시트가 활성화되어 있어도 항상 메인 검사기록 시트를 정확하게 반환합니다.
+ */
+function getMainSheet(ss) {
+  var sheet = ss.getSheetByName("Sheet1") || ss.getSheetByName("시트1");
+  if (!sheet) {
+    var all = ss.getSheets();
+    for (var i = 0; i < all.length; i++) {
+      var n = all[i].getName();
+      if (n !== "Trash" && n !== "휴지통" && n !== "Users") {
+        return all[i];
+      }
+    }
+    sheet = all[0];
+  }
+  return sheet;
+}
+
+/**
+ * [7일 경과 휴지통 자동 영구 삭제 헬퍼]
+ */
+function purgeExpiredTrash(trashSheet) {
+  if (!trashSheet) return;
+  var lastRow = trashSheet.getLastRow();
+  if (lastRow <= 1) return;
+  var now = new Date().getTime();
+  var SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  
+  var values = trashSheet.getRange(2, 10, lastRow - 1, 1).getValues();
+  for (var i = values.length - 1; i >= 0; i--) {
+    var rawDel = values[i][0];
+    if (rawDel) {
+      var delTime = new Date(rawDel).getTime();
+      if (!isNaN(delTime) && (now - delTime) > SEVEN_DAYS_MS) {
+        trashSheet.deleteRow(i + 2);
+      }
+    }
+  }
 }
 
 function doPost(e) {
@@ -39,7 +76,8 @@ function doPost(e) {
   lock.tryLock(30000);
   
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = getMainSheet(ss);
     
     // 첫 행(헤더)이 비어있으면 기본 헤더 자동 생성
     if (sheet.getLastRow() === 0) {
@@ -67,13 +105,145 @@ function doPost(e) {
     } else if (e && e.parameter) {
       data = e.parameter;
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // [ACTION: moveToTrash] 검사 결과를 휴지통 시트로 이동
+    // ─────────────────────────────────────────────────────────────
+    if (data.action === "moveToTrash") {
+      var trashSheet = ss.getSheetByName("Trash");
+      if (!trashSheet) {
+        trashSheet = ss.insertSheet("Trash");
+        trashSheet.appendRow([
+          "timestamp", "User_ID", "C_line", "T_line", "result", "value", "error", "Memo", "Crop_image", "deletedAt"
+        ]);
+        trashSheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#fee2e2");
+      }
+
+      // 7일 만료된 오래된 휴지통 항목 자동 영구 삭제
+      purgeExpiredTrash(trashSheet);
+
+      var items = data.items || [];
+      var movedCount = 0;
+      var lastRow = sheet.getLastRow();
+
+      if (lastRow > 1 && items.length > 0) {
+        var displayValues = sheet.getRange(2, 1, lastRow - 1, 9).getDisplayValues();
+        var rawValues = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
+        var formulas = sheet.getRange(2, 9, lastRow - 1, 1).getFormulas();
+
+        function normalizeDateDigits(val) {
+          if (!val) return "";
+          if (val instanceof Date) return Utilities.formatDate(val, "Asia/Seoul", "yyyyMMddHHmmss");
+          return String(val).replace(/\D/g, "").slice(0, 14);
+        }
+
+        var targetMap = {};
+        items.forEach(function(it) {
+          var dig = normalizeDateDigits(it.timestamp);
+          if (dig) {
+            targetMap[dig] = it.deletedAt || new Date().toISOString();
+            targetMap[dig.slice(0, 12)] = it.deletedAt || new Date().toISOString();
+          }
+        });
+
+        // 역순(아래 행부터)으로 검색하여 삭제 시 행 번호 밀림 방지
+        for (var i = displayValues.length - 1; i >= 0; i--) {
+          var rowTs = displayValues[i][0];
+          var rawTs = rawValues[i][0];
+          var d1 = normalizeDateDigits(rowTs);
+          var d2 = normalizeDateDigits(rawTs);
+
+          var matchDel = targetMap[d1] || targetMap[d2] || targetMap[d1.slice(0, 12)] || targetMap[d2.slice(0, 12)];
+
+          if (matchDel) {
+            var rowData = displayValues[i];
+            var cropForm = formulas[i] && formulas[i][0];
+
+            // Trash 시트에 추가 (9개 열 데이터 + deletedAt)
+            trashSheet.appendRow([
+              rowData[0], rowData[1], rowData[2], rowData[3], rowData[4],
+              rowData[5], rowData[6], rowData[7], cropForm || rowData[8], matchDel
+            ]);
+
+            // 원본 시트에서 삭제
+            sheet.deleteRow(i + 2);
+            movedCount++;
+          }
+        }
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        action: "moveToTrash",
+        movedCount: movedCount
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // [ACTION: restoreFromTrash] 휴지통에서 원래 시트로 복원
+    // ─────────────────────────────────────────────────────────────
+    if (data.action === "restoreFromTrash") {
+      var trashSheet = ss.getSheetByName("Trash");
+      var restoredCount = 0;
+
+      if (trashSheet && trashSheet.getLastRow() > 1) {
+        var items = data.items || [];
+        function normalizeDateDigits(val) {
+          if (!val) return "";
+          if (val instanceof Date) return Utilities.formatDate(val, "Asia/Seoul", "yyyyMMddHHmmss");
+          return String(val).replace(/\D/g, "").slice(0, 14);
+        }
+
+        var targetMap = {};
+        items.forEach(function(it) {
+          var dig = normalizeDateDigits(it.timestamp);
+          if (dig) {
+            targetMap[dig] = true;
+            targetMap[dig.slice(0, 12)] = true;
+          }
+        });
+
+        var trashLastRow = trashSheet.getLastRow();
+        var trashValues = trashSheet.getRange(2, 1, trashLastRow - 1, 9).getDisplayValues();
+        var trashRaw = trashSheet.getRange(2, 1, trashLastRow - 1, 9).getValues();
+        var trashFormulas = trashSheet.getRange(2, 9, trashLastRow - 1, 1).getFormulas();
+
+        for (var j = trashValues.length - 1; j >= 0; j--) {
+          var tTs = trashValues[j][0];
+          var tRaw = trashRaw[j][0];
+          var td1 = normalizeDateDigits(tTs);
+          var td2 = normalizeDateDigits(tRaw);
+
+          if (targetMap[td1] || targetMap[td2] || targetMap[td1.slice(0, 12)] || targetMap[td2.slice(0, 12)]) {
+            var tRow = trashValues[j];
+            var tCrop = (trashFormulas[j] && trashFormulas[j][0]) || tRow[8];
+
+            // 원본 시트에 다시 추가
+            sheet.appendRow([
+              tRow[0], tRow[1], tRow[2], tRow[3], tRow[4],
+              tRow[5], tRow[6], tRow[7], tCrop
+            ]);
+
+            // Trash 시트에서 제거
+            trashSheet.deleteRow(j + 2);
+            restoredCount++;
+          }
+        }
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        action: "restoreFromTrash",
+        restoredCount: restoredCount
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
     
     // 1. 기본 필드 추출
     var timestamp   = data.timestamp || Utilities.formatDate(new Date(), "Asia/Seoul", "yyyy-MM-dd HH:mm:ss");
     var userId      = data.User_ID || data.userId || "guest";
-    var cLine       = data.C_line || data.cLine || "";
-    var tLine       = data.T_line || data.tLine || "";
-    var result      = data.result || "";
+    var cLine       = data.C_line || data.cLine || "ok";
+    var tLine       = data.T_line || data.tLine || "none";
+    var result      = data.result || "negative";
     var value       = data.value !== undefined ? data.value : "";
     var errorMsg    = data.error || "";
     var memo        = data.Memo || data.memo || "";
@@ -83,85 +253,107 @@ function doPost(e) {
       rawFilename += ".jpg";
     }
 
-    // 2. 구글 드라이브에 이미지 파일 저장
+    // 2. 구글 드라이브에 이미지 파일 저장 (URL인 경우 재업로드 스킵)
     var imageBase64 = data.crop_image_base64 || data.cropImageBase64 || data.imageBase64 || "";
     var driveFileUrl   = "";
-    var driveFileId    = "";
+    var driveFileId    = data.driveFileId || "";
     var isDriveSuccess = false;
     
     if (imageBase64 && DRIVE_FOLDER_ID) {
-      try {
-        var folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
-        
-        // Data URL 헤더(data:image/jpeg;base64,) 제거
-        var pureBase64 = imageBase64;
-        if (pureBase64.indexOf("base64,") > -1) {
-          pureBase64 = pureBase64.split("base64,")[1];
-        }
-        
-        var decodedBytes = Utilities.base64Decode(pureBase64);
-        var blob = Utilities.newBlob(decodedBytes, "image/jpeg", rawFilename);
-        var file = folder.createFile(blob);
-        
-        // 누구나 링크로 볼 수 있도록 권한 설정
-        try {
-          file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        } catch (_) {}
-        
-        driveFileId    = file.getId();
-        driveFileUrl   = "https://drive.google.com/file/d/" + driveFileId + "/view";
+      if (imageBase64.indexOf("http") === 0) {
+        // 이미 URL인 경우 드라이브 재업로드 불필요
+        driveFileUrl = imageBase64;
         isDriveSuccess = true;
-      } catch (driveErr) {
-        errorMsg = (errorMsg ? errorMsg + " | " : "") + "DriveErr: " + driveErr.toString();
+      } else {
+        try {
+          var folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+          var pureBase64 = imageBase64;
+          if (pureBase64.indexOf("base64,") > -1) {
+            pureBase64 = pureBase64.split("base64,")[1];
+          }
+          
+          var decodedBytes = Utilities.base64Decode(pureBase64);
+          var blob = Utilities.newBlob(decodedBytes, "image/jpeg", rawFilename);
+          var file = folder.createFile(blob);
+          
+          try {
+            file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+          } catch (_) {}
+          
+          driveFileId    = file.getId();
+          driveFileUrl   = "https://drive.google.com/file/d/" + driveFileId + "/view";
+          isDriveSuccess = true;
+        } catch (driveErr) {
+          errorMsg = (errorMsg ? errorMsg + " | " : "") + "DriveErr: " + driveErr.toString();
+        }
       }
-    } else if (!imageBase64) {
-      errorMsg = (errorMsg ? errorMsg + " | " : "") + "NoImageBase64Received";
     }
-    
-    // 3. 기존 행 존재 여부 검색 (중복 방지 & 업데이트)
+
+    // 3. 기존 행 존재 여부 검색 (중복 방지 & 재분석 덮어쓰기 업데이트)
     var lastRowIdx = sheet.getLastRow();
     var targetRow = -1;
 
-    // [1순위 매칭] 클라이언트가 직접 넘겨준 rowIndex 유효성 검사
-    var reqRowIndex = data.rowIndex || data.rowNumber;
-    if (reqRowIndex && Number(reqRowIndex) >= 2 && Number(reqRowIndex) <= lastRowIdx) {
-      targetRow = Number(reqRowIndex);
+    function toDigits(s) {
+      if (!s) return "";
+      if (s instanceof Date) return Utilities.formatDate(s, "Asia/Seoul", "yyyyMMddHHmm");
+      var m = String(s).match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})[\sT.]+(\d{1,2}):(\d{1,2})/);
+      if (m) {
+        var pad = function(n) { return (n.length < 2 ? "0" + n : n); };
+        return m[1] + pad(m[2]) + pad(m[3]) + pad(m[4]) + pad(m[5]);
+      }
+      return String(s).replace(/\D/g, "").slice(0, 12);
     }
 
-    // [2순위 매칭] 파일명 또는 날짜/사용자 정규화 매칭
-    if (targetRow === -1 && lastRowIdx > 1) {
-      // 2행부터 마지막 행까지의 데이터 (Col 1: timestamp, Col 2: userId, Col 9: Crop_image)
-      var displayValues = sheet.getRange(2, 1, lastRowIdx - 1, 9).getDisplayValues();
-      
-      // 날짜를 YYYYMMDDHHmm (12자리 숫자)로 정규화하는 헬퍼 함수
-      function toDateDigits(str) {
-        if (!str) return "";
-        var m = String(str).match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})[\sT.]+(\d{1,2}):(\d{1,2})/);
-        if (m) {
-          var pad = function(n) { return (n.length < 2 ? "0" + n : n); };
-          return m[1] + pad(m[2]) + pad(m[3]) + pad(m[4]) + pad(m[5]);
-        }
-        return String(str).replace(/\D/g, "").slice(0, 12);
+    var targetDigits = toDigits(timestamp);
+
+    // [1순위 매칭] 클라이언트가 넘겨준 rowIndex 검증 (타임스탬프 또는 유저ID 일치 시 신뢰)
+    var reqRowIndex = data.rowIndex || data.rowNumber;
+    if (reqRowIndex && Number(reqRowIndex) >= 2 && Number(reqRowIndex) <= lastRowIdx) {
+      var checkRow = Number(reqRowIndex);
+      var checkTsVal = sheet.getRange(checkRow, 1).getValue();
+      var checkTsDisp = sheet.getRange(checkRow, 1).getDisplayValue();
+      var checkUser = String(sheet.getRange(checkRow, 2).getDisplayValue() || "").trim();
+      var cDig1 = toDigits(checkTsVal);
+      var cDig2 = toDigits(checkTsDisp);
+
+      if ((targetDigits && (cDig1 === targetDigits || cDig2 === targetDigits)) || (checkUser && checkUser === userId)) {
+        targetRow = checkRow;
       }
+    }
 
-      var targetDigits = toDateDigits(timestamp);
+    // [2순위 매칭] 전체 행 대상 다중 조건 정밀 검색 (드라이브ID / 파일명 / 정규화 일시+사용자)
+    if (targetRow === -1 && lastRowIdx > 1) {
+      var rawValues = sheet.getRange(2, 1, lastRowIdx - 1, 9).getValues();
+      var displayValues = sheet.getRange(2, 1, lastRowIdx - 1, 9).getDisplayValues();
+      var formulas = sheet.getRange(2, 9, lastRowIdx - 1, 1).getFormulas();
 
-      // 최근에 등록된 행일 가능성이 높으므로 역순(마지막 행부터)으로 검색
       for (var i = displayValues.length - 1; i >= 0; i--) {
-        var rowNum = i + 2; // 시트 1-indexed 실제 행 번호
-        var rowTs = (displayValues[i][0] || "").trim();
+        var rowNum = i + 2;
+        var rowTsVal = rawValues[i][0];
+        var rowTsDisp = displayValues[i][0];
         var rowUser = (displayValues[i][1] || "").trim();
         var rowCrop = (displayValues[i][8] || "").trim();
+        var rowFormula = (formulas[i] && formulas[i][0]) || "";
 
-        // 1) 파일명 일치
-        var isFileMatch = rawFilename && rowCrop && (rowCrop.indexOf(rawFilename) !== -1 || rawFilename.indexOf(rowCrop) !== -1);
-        
-        // 2) 정규화된 12자리 날짜/시간 + 사용자 ID 일치
-        var rowDigits = toDateDigits(rowTs);
-        var isTimeMatch = targetDigits && rowDigits && (targetDigits === rowDigits);
+        // 1) 드라이브 File ID 일치
+        if (driveFileId && (rowFormula.indexOf(driveFileId) !== -1 || rowCrop.indexOf(driveFileId) !== -1)) {
+          targetRow = rowNum;
+          break;
+        }
+
+        // 2) 파일명 일치
+        if (rawFilename && rowCrop && (rowCrop.indexOf(rawFilename) !== -1 || rawFilename.indexOf(rowCrop) !== -1)) {
+          targetRow = rowNum;
+          break;
+        }
+
+        // 3) 정규화된 날짜/시간(분 단위) + 사용자 ID 일치
+        var rDig1 = toDigits(rowTsVal);
+        var rDig2 = toDigits(rowTsDisp);
+        var isTimeMatch = targetDigits && (rDig1 === targetDigits || rDig2 === targetDigits);
         var isUserMatch = !userId || !rowUser || (rowUser === userId);
 
-        if (isFileMatch || (isTimeMatch && isUserMatch)) {
+        if (isTimeMatch && isUserMatch) {
           targetRow = rowNum;
           break;
         }
@@ -172,12 +364,13 @@ function doPost(e) {
     if (targetRow > 0) {
       // [기존 행 덮어쓰기 업데이트]
       isUpdated = true;
-      if (cLine) sheet.getRange(targetRow, 3).setValue(cLine);
-      if (tLine) sheet.getRange(targetRow, 4).setValue(tLine);
-      if (result) sheet.getRange(targetRow, 5).setValue(result);
-      // 음성/실패 시 이전 농도값 클리어 지원
-      sheet.getRange(targetRow, 6).setValue((value !== undefined && value !== null) ? value : "");
-      if (errorMsg) sheet.getRange(targetRow, 7).setValue(errorMsg);
+      sheet.getRange(targetRow, 3).setValue(cLine || "ok");
+      sheet.getRange(targetRow, 4).setValue(tLine || "none");
+      sheet.getRange(targetRow, 5).setValue(result || "negative");
+      // 양성이면 농도값 기록, 음성/실패 시 이전 농도값 클리어
+      var isPositive = (result === "positive" || result === "양성");
+      sheet.getRange(targetRow, 6).setValue(isPositive ? ((value !== "" && value !== null && value !== undefined) ? value : "0.01") : "");
+      sheet.getRange(targetRow, 7).setValue(errorMsg || "");
       if (data.Memo !== undefined || data.memo !== undefined) {
         sheet.getRange(targetRow, 8).setValue(memo);
       }
@@ -190,21 +383,22 @@ function doPost(e) {
       }
     } else {
       // [신규 행 추가]
+      var isPos = (result === "positive" || result === "양성");
+      var valToSave = isPos ? ((value !== "" && value !== null && value !== undefined) ? value : "0.01") : "";
       var newRow = [
         timestamp,
         userId,
-        cLine,
-        tLine,
-        result,
-        value,
-        errorMsg,
-        memo,
+        cLine || "ok",
+        tLine || "none",
+        result || "negative",
+        valToSave,
+        errorMsg || "",
+        memo || "",
         rawFilename
       ];
       sheet.appendRow(newRow);
       var newLastRowIdx = sheet.getLastRow();
 
-      // 4. 구글 드라이브 업로드 성공 시 HYPERLINK 수식 직접 셀에 주입 (파란색 클릭 가능한 링크)
       if (isDriveSuccess && driveFileUrl) {
         var cropCell = sheet.getRange(newLastRowIdx, 9);
         var formula = '=HYPERLINK("' + driveFileUrl + '", "' + rawFilename + '")';
@@ -265,7 +459,8 @@ function doGet(e) {
   // 2. 전체 기록 조회 (Fetch History)
   if (action === "fetch" || action === "getHistory") {
     try {
-      var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var sheet = getMainSheet(ss);
       var lastRow = sheet.getLastRow();
       var results = [];
 
@@ -430,7 +625,8 @@ function doGet(e) {
  * 이전 중복 행들을 자동으로 삭제합니다.
  */
 function cleanupDuplicateRows() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = getMainSheet(ss);
   var lastRow = sheet.getLastRow();
   if (lastRow <= 2) {
     Logger.log("정리할 데이터가 없습니다.");

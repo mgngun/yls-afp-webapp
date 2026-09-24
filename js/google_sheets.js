@@ -209,6 +209,64 @@ class GoogleSheetsSync {
         localStorage.removeItem(this.QUEUE_KEY);
     }
 
+    /**
+     * 검사 결과를 휴지통으로 이동(삭제)하도록 서버에 요청합니다.
+     * @param {Array|Object} records - 삭제할 레코드 목록 또는 단일 레코드
+     */
+    async moveToTrash(records) {
+        if (!this.config.webhookUrl || !this.config.enabled) return { success: false };
+        const list = Array.isArray(records) ? records : [records];
+        const payload = {
+            action: 'moveToTrash',
+            items: list.map(r => ({
+                id: r.id,
+                timestamp: r.timestamp || r.ts,
+                rowIndex: r.rowIndex || null,
+                cropFilename: r.cropFilename || '',
+                deletedAt: r.deletedAt || new Date().toISOString()
+            }))
+        };
+        try {
+            await this._sendToWebhook(payload);
+            return { success: true };
+        } catch (err) {
+            console.warn('moveToTrash webhook error:', err);
+            return { success: false, error: err.message };
+        }
+    }
+
+    /**
+     * 휴지통의 검사 결과를 원래대로 복원하도록 서버에 요청합니다.
+     * @param {Array|Object} records - 복원할 레코드 목록 또는 단일 레코드
+     */
+    async restoreFromTrash(records) {
+        if (!this.config.webhookUrl || !this.config.enabled) return { success: false };
+        const list = Array.isArray(records) ? records : [records];
+        const payload = {
+            action: 'restoreFromTrash',
+            items: list.map(r => ({
+                id: r.id,
+                timestamp: r.timestamp || r.ts,
+                userId: r.userNickname || r.userId || 'yelloi',
+                cLine: r.cLine || 'ok',
+                tLine: r.tLine || (r.result === '양성' ? 'ok' : 'none'),
+                result: r.resultEnglish || (r.result === '양성' ? 'positive' : r.result === '음성' ? 'negative' : 'fail'),
+                value: r.concentrationStr !== '-' ? r.concentrationStr : '',
+                error: r.error || '',
+                memo: r.memo || '',
+                cropFilename: r.cropFilename || '',
+                driveFileId: r.driveFileId || ''
+            }))
+        };
+        try {
+            await this._sendToWebhook(payload);
+            return { success: true };
+        } catch (err) {
+            console.warn('restoreFromTrash webhook error:', err);
+            return { success: false, error: err.message };
+        }
+    }
+
     async _sendToWebhook(data) {
         // Google Apps Script no-cors 전송 시 text/plain;charset=utf-8을 사용해야
         // 큰 Base64 이미지 데이터가 e.postData.contents로 손실 없이 100% 전달됩니다.
