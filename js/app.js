@@ -463,6 +463,9 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.removeItem('yls_user_logged_in');
         localStorage.removeItem('yls_user_name');
         localStorage.removeItem('yls_last_view');
+        // 로그아웃 시 로컬 검사 기록 및 휴지통 초기화 (다음 사용자 로그인 시 섞이지 않도록)
+        localStorage.removeItem('yls_lfa_history');
+        localStorage.removeItem('yls_lfa_trash');
         clearInterval(state.countdownInterval);
         state.countdownInterval = null;
         state.countdownRemaining = 0;
@@ -1126,14 +1129,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (state.sheetsSync && typeof state.sheetsSync.fetchResults === 'function') {
             try {
-                const res = await state.sheetsSync.fetchResults();
+                // 현재 로그인 사용자의 결과만 서버에서 가져옴
+                const currentUser = state.currentUser.username;
+                const res = await state.sheetsSync.fetchResults(currentUser);
                 if (res && res.success) {
                     if (Array.isArray(res.data) && res.data.length > 0) {
-                        const sorted = sortHistoryByDateDesc(res.data);
+                        // 서버 응답에서 혹시 다른 사용자 데이터가 섞이지 않도록 클라이언트에서도 재확인
+                        const filtered = res.data.filter(r =>
+                            !r.userNickname || r.userNickname === currentUser
+                        );
+                        const sorted = sortHistoryByDateDesc(filtered);
                         localStorage.setItem('yls_lfa_history', JSON.stringify(sorted));
+                    } else if (Array.isArray(res.data) && res.data.length === 0) {
+                        // 서버에 이 사용자의 결과가 없으면 로컬도 초기화
+                        localStorage.setItem('yls_lfa_history', JSON.stringify([]));
                     }
                     if (Array.isArray(res.trash)) {
-                        localStorage.setItem('yls_lfa_trash', JSON.stringify(res.trash));
+                        // 휴지통도 현재 사용자 것만 필터링
+                        const filteredTrash = res.trash.filter(r =>
+                            !r.userNickname || r.userNickname === currentUser
+                        );
+                        localStorage.setItem('yls_lfa_trash', JSON.stringify(filteredTrash));
                         updateTrashBadge();
                     }
                     renderResultsTable();
@@ -1154,8 +1170,10 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function cleanupExpiredTrash() {
         try {
+            const currentUser = state.currentUser.username;
             const raw = JSON.parse(localStorage.getItem('yls_lfa_trash') || '[]');
             const now = Date.now();
+            // 7일 경과 제거 + 현재 사용자 것만 반환
             const valid = raw.filter(item => {
                 const delTime = item.deletedAt ? new Date(item.deletedAt).getTime() : 0;
                 return (now - delTime) < SEVEN_DAYS_MS;
@@ -1163,7 +1181,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (valid.length !== raw.length) {
                 localStorage.setItem('yls_lfa_trash', JSON.stringify(valid));
             }
-            return valid;
+            // 현재 로그인 사용자의 휴지통 항목만 반환
+            return valid.filter(item =>
+                !item.userNickname || item.userNickname === currentUser
+            );
         } catch (e) {
             console.warn('Trash cleanup error:', e);
             return [];
@@ -1234,11 +1255,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = el.resultsBody;
         if (!tbody) return;
 
-        if (el.resultUserId) el.resultUserId.textContent = state.currentUser.username;
+        const currentUser = state.currentUser.username;
+        if (el.resultUserId) el.resultUserId.textContent = currentUser;
         updateTrashBadge();
 
         const rawHistory = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
-        const history = sortHistoryByDateDesc(rawHistory);
+        // 현재 로그인 사용자의 기록만 표시 (로컬에 혼재된 경우 방어적 필터)
+        const userHistory = rawHistory.filter(r =>
+            !r.userNickname || r.userNickname === currentUser
+        );
+        const history = sortHistoryByDateDesc(userHistory);
         const totalPages = Math.max(1, Math.ceil(history.length / PAGE_SIZE));
         if (state.currentPage > totalPages) state.currentPage = totalPages;
 
@@ -1488,9 +1514,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // 2. 서버 휴지통과 실시간 동기화하여 최신 삭제 목록 반영
         if (state.sheetsSync && typeof state.sheetsSync.fetchTrash === 'function') {
             try {
-                const res = await state.sheetsSync.fetchTrash();
+                const currentUser = state.currentUser.username;
+                const res = await state.sheetsSync.fetchTrash(currentUser);
                 if (res && res.success && Array.isArray(res.data)) {
-                    localStorage.setItem('yls_lfa_trash', JSON.stringify(res.data));
+                    // 현재 사용자의 휴지통 항목만 저장
+                    const filteredTrash = res.data.filter(r =>
+                        !r.userNickname || r.userNickname === currentUser
+                    );
+                    localStorage.setItem('yls_lfa_trash', JSON.stringify(filteredTrash));
                     renderTrashList();
                 }
             } catch (err) {

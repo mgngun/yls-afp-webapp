@@ -632,6 +632,11 @@ function doGet(e) {
 
           for (var ti = 0; ti < tRangeData.length; ti++) {
             var tRow = tRangeData[ti];
+            // userId 필터링: targetUser가 지정된 경우 해당 사용자 것만 반환
+            var tUserId = String(tRow[1] || "").trim();
+            if (targetUser && tUserId && tUserId !== targetUser) {
+              continue;
+            }
             var tForm = tRangeFormulas[ti] && tRangeFormulas[ti][0];
             var tRich = tRangeRichText[ti] && tRangeRichText[ti][0];
             var tItem = extractRowData(tRow, tForm, tRich, folder, true);
