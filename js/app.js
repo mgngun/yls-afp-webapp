@@ -140,6 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         graphPopupResult: document.getElementById('graph-popup-result-badge'),
         btnGraphClose: document.getElementById('btn-graph-close'),
         btnGraphClose2: document.getElementById('btn-graph-close2'),
+        btnGraphDelete: document.getElementById('btn-graph-delete'),
         graphStripCanvas: document.getElementById('graph-strip-canvas'),
         graphProfile: document.getElementById('graph-profile-canvas'),
         metricT: document.getElementById('metric-t-intensity'),
@@ -2251,10 +2252,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function closeGraphPopup() {
         if (el.graphPopup) el.graphPopup.classList.add('hidden');
+        state.activeGraphRecord = null;
+    }
+
+    /**
+     * 그래프 팝업에서 현재 표시 중인 기록을 휴지통으로 이동합니다.
+     */
+    async function deleteFromGraphPopup() {
+        const record = state.activeGraphRecord;
+        if (!record || !record.id) return;
+
+        // 삭제 확인
+        if (!confirm('이 검사 결과를 휴지통으로 이동하시겠습니까?')) return;
+
+        const rawHistory = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
+        const existingTrash = cleanupExpiredTrash();
+        const fullTrash = JSON.parse(localStorage.getItem('yls_lfa_trash') || '[]');
+        const nowIso = new Date().toISOString();
+
+        const remaining = rawHistory.filter(r => r.id !== record.id);
+        const trashItem = { ...record, deletedAt: nowIso };
+
+        localStorage.setItem('yls_lfa_history', JSON.stringify(remaining));
+        localStorage.setItem('yls_lfa_trash', JSON.stringify([trashItem, ...fullTrash]));
+
+        // 서버 동기화
+        if (state.sheetsSync && typeof state.sheetsSync.moveToTrash === 'function') {
+            state.sheetsSync.moveToTrash([trashItem]).catch(err => {
+                console.warn('Server trash sync error:', err);
+            });
+        }
+
+        closeGraphPopup();
+        updateTrashBadge();
+        renderResultsTable();
+        showToast('검사 결과가 휴지통으로 이동되었습니다.');
     }
 
     if (el.btnGraphClose) el.btnGraphClose.addEventListener('click', closeGraphPopup);
     if (el.btnGraphClose2) el.btnGraphClose2.addEventListener('click', closeGraphPopup);
+    if (el.btnGraphDelete) el.btnGraphDelete.addEventListener('click', deleteFromGraphPopup);
     if (el.graphPopup) {
         el.graphPopup.addEventListener('click', e => {
             if (e.target === el.graphPopup) closeGraphPopup();
