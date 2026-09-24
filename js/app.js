@@ -1122,17 +1122,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadAndRenderResultsTable() {
         renderResultsTable();
+        updateTrashBadge();
 
         if (state.sheetsSync && typeof state.sheetsSync.fetchResults === 'function') {
             try {
-                const res = await state.sheetsSync.fetchResults(state.currentUser.username);
-                if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-                    const sorted = sortHistoryByDateDesc(res.data);
-                    localStorage.setItem('yls_lfa_history', JSON.stringify(sorted));
+                const res = await state.sheetsSync.fetchResults();
+                if (res && res.success) {
+                    if (Array.isArray(res.data) && res.data.length > 0) {
+                        const sorted = sortHistoryByDateDesc(res.data);
+                        localStorage.setItem('yls_lfa_history', JSON.stringify(sorted));
+                    }
+                    if (Array.isArray(res.trash)) {
+                        localStorage.setItem('yls_lfa_trash', JSON.stringify(res.trash));
+                        updateTrashBadge();
+                    }
                     renderResultsTable();
                 }
             } catch (err) {
-                console.warn('Failed to fetch latest records from Google Sheets:', err);
+                console.warn('Failed to fetch latest records from server:', err);
             }
         }
     }
@@ -1473,9 +1480,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Trash Popup Logic ──
-    function openTrashPopup() {
+    async function openTrashPopup() {
+        // 1. 기존 로컬 데이터를 즉시 표시 (지연 없는 쾌속 UX)
         renderTrashList();
         if (el.trashPopup) el.trashPopup.classList.remove('hidden');
+
+        // 2. 서버 휴지통과 실시간 동기화하여 최신 삭제 목록 반영
+        if (state.sheetsSync && typeof state.sheetsSync.fetchTrash === 'function') {
+            try {
+                const res = await state.sheetsSync.fetchTrash();
+                if (res && res.success && Array.isArray(res.data)) {
+                    localStorage.setItem('yls_lfa_trash', JSON.stringify(res.data));
+                    renderTrashList();
+                }
+            } catch (err) {
+                console.warn('Failed to sync trash from server:', err);
+            }
+        }
     }
 
     function closeTrashPopup() {
@@ -1546,7 +1567,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function restoreRecordFromTrash(recordId) {
+    async function restoreRecordFromTrash(recordId) {
         const trash = cleanupExpiredTrash();
         const targetIdx = trash.findIndex(r => r.id === recordId);
         if (targetIdx < 0) return;
@@ -1564,19 +1585,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const sorted = sortHistoryByDateDesc(rawHistory);
         localStorage.setItem('yls_lfa_history', JSON.stringify(sorted));
 
-        // 서버 동기화 (복원)
-        if (state.sheetsSync && typeof state.sheetsSync.restoreFromTrash === 'function') {
-            state.sheetsSync.restoreFromTrash(restored).catch(err => {
-                console.warn('Server restore sync error:', err);
-            });
-        }
-
         showToast(`'${restored.timestamp}' 검사 결과가 원래대로 복원되었습니다.`);
         renderTrashList();
         renderResultsTable();
+
+        // 서버 동기화 (복원)
+        if (state.sheetsSync && typeof state.sheetsSync.restoreFromTrash === 'function') {
+            try {
+                await state.sheetsSync.restoreFromTrash(restored);
+            } catch (err) {
+                console.warn('Server restore sync error:', err);
+            }
+        }
     }
 
-    function restoreAllTrash() {
+    async function restoreAllTrash() {
         const trash = cleanupExpiredTrash();
         if (trash.length === 0) return;
 
@@ -1591,19 +1614,21 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('yls_lfa_history', JSON.stringify(combined));
         localStorage.setItem('yls_lfa_trash', JSON.stringify([]));
 
-        // 서버 동기화
-        if (state.sheetsSync && typeof state.sheetsSync.restoreFromTrash === 'function') {
-            restoredItems.forEach(item => {
-                state.sheetsSync.restoreFromTrash(item).catch(() => {});
-            });
-        }
-
         showToast(`${restoredItems.length}개의 검사 결과가 모두 복원되었습니다.`);
         renderTrashList();
         renderResultsTable();
+
+        // 서버 동기화
+        if (state.sheetsSync && typeof state.sheetsSync.restoreFromTrash === 'function') {
+            try {
+                await state.sheetsSync.restoreFromTrash(restoredItems);
+            } catch (err) {
+                console.warn('Server restoreAll sync error:', err);
+            }
+        }
     }
 
-    function emptyTrash() {
+    async function emptyTrash() {
         const trash = cleanupExpiredTrash();
         if (trash.length === 0) return;
 
@@ -1616,6 +1641,15 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('휴지통이 비워졌습니다.');
         renderTrashList();
         renderResultsTable();
+
+        // 서버 휴지통 비우기 동기화
+        if (state.sheetsSync && typeof state.sheetsSync.emptyTrash === 'function') {
+            try {
+                await state.sheetsSync.emptyTrash();
+            } catch (err) {
+                console.warn('Server emptyTrash sync error:', err);
+            }
+        }
     }
 
     if (el.btnOpenTrash) {
@@ -2402,6 +2436,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (lastView === 'camera' || lastView === 'confirm') {
         lastView = 'timesetting';
     }
+
+    updateTrashBadge();
 
     if (isLoggedIn) {
         state.currentUser.username = savedUsername;

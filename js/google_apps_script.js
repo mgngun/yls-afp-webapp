@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * YLS LFA AFP 진단 키트 - Google Apps Script (GAS) 백엔드 코드
- * 구글 시트 저장/수정 + 휴지통 보관 & 7일 자동 영구 삭제 & 복원 지원 (v4.7.1)
+ * 구글 시트 저장/수정 + 휴지통 보관 & 7일 자동 영구 삭제 & 복원 지원 (v4.7.4)
  * ============================================================================
  * 
  * [설정된 구글 리소스]
@@ -55,7 +55,8 @@ function getMainSheet(ss) {
 function purgeExpiredTrash(trashSheet) {
   if (!trashSheet) return;
   var lastRow = trashSheet.getLastRow();
-  if (lastRow <= 1) return;
+  var lastCol = trashSheet.getLastColumn();
+  if (lastRow <= 1 || lastCol < 10) return;
   var now = new Date().getTime();
   var SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
   
@@ -137,15 +138,6 @@ function doPost(e) {
           return String(val).replace(/\D/g, "").slice(0, 14);
         }
 
-        var targetMap = {};
-        items.forEach(function(it) {
-          var dig = normalizeDateDigits(it.timestamp);
-          if (dig) {
-            targetMap[dig] = it.deletedAt || new Date().toISOString();
-            targetMap[dig.slice(0, 12)] = it.deletedAt || new Date().toISOString();
-          }
-        });
-
         // 역순(아래 행부터)으로 검색하여 삭제 시 행 번호 밀림 방지
         for (var i = displayValues.length - 1; i >= 0; i--) {
           var rowTs = displayValues[i][0];
@@ -153,7 +145,16 @@ function doPost(e) {
           var d1 = normalizeDateDigits(rowTs);
           var d2 = normalizeDateDigits(rawTs);
 
-          var matchDel = targetMap[d1] || targetMap[d2] || targetMap[d1.slice(0, 12)] || targetMap[d2.slice(0, 12)];
+          var matchDel = null;
+          for (var k = 0; k < items.length; k++) {
+            var it = items[k];
+            var itDig = normalizeDateDigits(it.timestamp);
+            if (!it._moved && (itDig === d1 || itDig === d2 || itDig.slice(0, 12) === d1.slice(0, 12) || itDig.slice(0, 12) === d2.slice(0, 12))) {
+              it._moved = true;
+              matchDel = it.deletedAt || new Date().toISOString();
+              break;
+            }
+          }
 
           if (matchDel) {
             var rowData = displayValues[i];
@@ -194,15 +195,6 @@ function doPost(e) {
           return String(val).replace(/\D/g, "").slice(0, 14);
         }
 
-        var targetMap = {};
-        items.forEach(function(it) {
-          var dig = normalizeDateDigits(it.timestamp);
-          if (dig) {
-            targetMap[dig] = true;
-            targetMap[dig.slice(0, 12)] = true;
-          }
-        });
-
         var trashLastRow = trashSheet.getLastRow();
         var trashValues = trashSheet.getRange(2, 1, trashLastRow - 1, 9).getDisplayValues();
         var trashRaw = trashSheet.getRange(2, 1, trashLastRow - 1, 9).getValues();
@@ -214,7 +206,18 @@ function doPost(e) {
           var td1 = normalizeDateDigits(tTs);
           var td2 = normalizeDateDigits(tRaw);
 
-          if (targetMap[td1] || targetMap[td2] || targetMap[td1.slice(0, 12)] || targetMap[td2.slice(0, 12)]) {
+          var matchRestore = false;
+          for (var k = 0; k < items.length; k++) {
+            var it = items[k];
+            var itDig = normalizeDateDigits(it.timestamp);
+            if (!it._restored && (itDig === td1 || itDig === td2 || itDig.slice(0, 12) === td1.slice(0, 12) || itDig.slice(0, 12) === td2.slice(0, 12))) {
+              it._restored = true;
+              matchRestore = true;
+              break;
+            }
+          }
+
+          if (matchRestore) {
             var tRow = trashValues[j];
             var tCrop = (trashFormulas[j] && trashFormulas[j][0]) || tRow[8];
 
@@ -235,6 +238,23 @@ function doPost(e) {
         status: "success",
         action: "restoreFromTrash",
         restoredCount: restoredCount
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // [ACTION: emptyTrash] 휴지통 시트의 모든 보관 기록 완전 비우기
+    // ─────────────────────────────────────────────────────────────
+    if (data.action === "emptyTrash") {
+      var trashSheet = ss.getSheetByName("Trash");
+      var emptiedCount = 0;
+      if (trashSheet && trashSheet.getLastRow() > 1) {
+        emptiedCount = trashSheet.getLastRow() - 1;
+        trashSheet.deleteRows(2, emptiedCount);
+      }
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        action: "emptyTrash",
+        emptiedCount: emptiedCount
       })).setMimeType(ContentService.MimeType.JSON);
     }
     
@@ -429,6 +449,139 @@ function doPost(e) {
   }
 }
 
+/**
+ * [행 데이터 공통 파싱 헬퍼]
+ * Sheet1(메인 기록) 및 Trash(휴지통) 행 데이터를 일관된 JSON 객체로 변환합니다.
+ */
+function extractRowData(row, cropForm, richText, folder, isTrash) {
+  var rawTs     = row[0];
+  var userId    = String(row[1] || "").trim();
+  var cLine     = String(row[2] || "").trim();
+  var tLine     = String(row[3] || "").trim();
+  var resultRaw = String(row[4] || "").trim();
+  var valRaw    = row[5];
+  var errStr    = String(row[6] || "").trim();
+  var memoStr   = String(row[7] || "").trim();
+  var cropVal   = String(row[8] || "").trim();
+  var cropFormula = String(cropForm || "").trim();
+  var deletedAtRaw = isTrash ? row[9] : null;
+
+  // 날짜 포맷 표준화 (초 단위 포함)
+  var tsFormatted = "";
+  if (rawTs instanceof Date) {
+    tsFormatted = Utilities.formatDate(rawTs, "Asia/Seoul", "yyyy-MM-dd HH:mm:ss");
+  } else {
+    var rawStr = String(rawTs || "").trim();
+    if (rawStr.length === 16) {
+      tsFormatted = rawStr + ":00";
+    } else {
+      tsFormatted = rawStr.slice(0, 19);
+    }
+  }
+
+  // 결과 한글화 매핑
+  var resultKorean = "실패";
+  if (resultRaw === "positive" || resultRaw === "양성") resultKorean = "양성";
+  else if (resultRaw === "negative" || resultRaw === "음성") resultKorean = "음성";
+
+  // 농도값 문자열
+  var concStr = "-";
+  if (resultKorean === "양성") {
+    concStr = (valRaw !== "" && valRaw !== null && valRaw !== undefined && valRaw !== "-") ? String(valRaw) : "0.01";
+  }
+
+  // ── 이미지 URL 및 Drive File ID 다중 추출 ──
+  var cropUrl = "";
+  var driveFileId = "";
+  var cropName = cropVal;
+
+  // 1) RichText 셀 링크 추출 (가장 최신 Google Sheets 링크 포맷)
+  if (richText) {
+    var rtLink = richText.getLinkUrl();
+    if (rtLink) cropUrl = rtLink;
+  }
+
+  // 2) 수식에서 추출: =HYPERLINK("URL", "FILENAME")
+  if (!cropUrl && cropFormula) {
+    var m1 = cropFormula.match(/HYPERLINK\s*\(\s*["']([^"']+)["']\s*(?:,\s*["']([^"']+)["'])?\s*\)/i);
+    if (m1) {
+      cropUrl = m1[1];
+      if (m1[2]) cropName = m1[2];
+    }
+  }
+
+  // 3) 텍스트 값 자체에 URL이 있는 경우
+  if (!cropUrl && cropVal.indexOf("http") > -1) {
+    cropUrl = cropVal;
+  }
+
+  // 4) URL에서 순수 file ID 추출 (25자 이상 영문숫자)
+  if (cropUrl) {
+    var idMatch = cropUrl.match(/[-\w]{25,}/);
+    if (idMatch) driveFileId = idMatch[0];
+  }
+
+  // 5) [중요] 드라이브 폴더에서 파일명으로 직접 파일 검색 (Fallback)
+  if (!driveFileId && folder && cropName && cropName.indexOf(".jpg") > -1) {
+    try {
+      var files = folder.getFilesByName(cropName);
+      if (files.hasNext()) {
+        var f = files.next();
+        driveFileId = f.getId();
+        cropUrl = f.getUrl();
+      }
+    } catch (_) {}
+  }
+
+  var item = {
+    id: isTrash ? ("TRASH_" + (tsFormatted ? tsFormatted.replace(/[- :]/g, "") : ("ROW_" + Math.random().toString(36).substring(2, 7))) + "_" + (userId || "user"))
+                : ("REC_SHEET_" + (tsFormatted ? tsFormatted.replace(/[- :]/g, "") : ("ROW_" + Math.random().toString(36).substring(2, 7)))),
+    timestamp: tsFormatted,
+    userNickname: userId,
+    cLine: cLine,
+    tLine: tLine,
+    result: resultKorean,
+    resultEnglish: resultRaw,
+    concentrationStr: concStr,
+    error: errStr,
+    memo: memoStr,
+    cropImageDataUrl: null,
+    cropUrl: cropUrl || null,
+    driveFileId: driveFileId || null,
+    cropFilename: cropName || (userId + "_" + tsFormatted.replace(/[- :]/g, "") + ".jpg")
+  };
+
+  if (isTrash) {
+    var deletedAtIso = "";
+    if (deletedAtRaw instanceof Date) {
+      deletedAtIso = Utilities.formatDate(deletedAtRaw, "Asia/Seoul", "yyyy-MM-dd'T'HH:mm:ssXXX");
+    } else if (deletedAtRaw) {
+      deletedAtIso = String(deletedAtRaw).trim();
+    } else {
+      deletedAtIso = (rawTs instanceof Date) ? Utilities.formatDate(rawTs, "Asia/Seoul", "yyyy-MM-dd'T'HH:mm:ssXXX") : new Date().toISOString();
+    }
+    item.deletedAt = deletedAtIso;
+  }
+
+  return item;
+}
+
+function sortRecordsByTimestampDesc(list) {
+  list.sort(function(a, b) {
+    var parseDate = function(str) {
+      if (!str) return 0;
+      var m = String(str).match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})[\sT](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+      if (m) {
+        return new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10), parseInt(m[4],10), parseInt(m[5],10), parseInt(m[6] || 0, 10)).getTime();
+      }
+      var d = new Date(String(str).replace(/\./g, "-"));
+      return !isNaN(d.getTime()) ? d.getTime() : 0;
+    };
+    return parseDate(b.timestamp) - parseDate(a.timestamp);
+  });
+  return list;
+}
+
 function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || "";
   var targetUser = (e && e.parameter && e.parameter.userId) || "";
@@ -456,149 +609,83 @@ function doGet(e) {
     }
   }
 
-  // 2. 전체 기록 조회 (Fetch History)
-  if (action === "fetch" || action === "getHistory") {
+  // 2. 전체 기록 및 휴지통 조회 (Fetch History & Trash)
+  if (action === "fetch" || action === "getHistory" || action === "fetchTrash" || action === "getTrash") {
     try {
       var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var folder = null;
+      try {
+        if (DRIVE_FOLDER_ID) folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+      } catch (_) {}
+
+      // ── 1) Trash 시트 데이터 읽기 & 7일 만료 자동 영구 삭제 ──
+      var trashSheet = ss.getSheetByName("Trash");
+      var trashResults = [];
+      if (trashSheet) {
+        purgeExpiredTrash(trashSheet);
+        var trashLastRow = trashSheet.getLastRow();
+        if (trashLastRow > 1) {
+          var tCols = Math.max(10, trashSheet.getLastColumn());
+          var tRangeData = trashSheet.getRange(2, 1, trashLastRow - 1, tCols).getValues();
+          var tRangeFormulas = trashSheet.getRange(2, 9, trashLastRow - 1, 1).getFormulas();
+          var tRangeRichText = trashSheet.getRange(2, 9, trashLastRow - 1, 1).getRichTextValues();
+
+          for (var ti = 0; ti < tRangeData.length; ti++) {
+            var tRow = tRangeData[ti];
+            var tForm = tRangeFormulas[ti] && tRangeFormulas[ti][0];
+            var tRich = tRangeRichText[ti] && tRangeRichText[ti][0];
+            var tItem = extractRowData(tRow, tForm, tRich, folder, true);
+            tItem.rowIndex = ti + 2;
+            trashResults.push(tItem);
+          }
+          sortRecordsByTimestampDesc(trashResults);
+        }
+      }
+
+      // 휴지통만 전용 조회 요청인 경우
+      if (action === "fetchTrash" || action === "getTrash") {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "success",
+          total: trashResults.length,
+          data: trashResults
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      // ── 2) Main 시트 검사 기록 데이터 읽기 ──
       var sheet = getMainSheet(ss);
       var lastRow = sheet.getLastRow();
       var results = [];
 
       if (lastRow > 1) {
-        var range = sheet.getRange(2, 1, lastRow - 1, 9);
-        var rangeData = range.getValues();
+        var mCols = Math.max(9, sheet.getLastColumn());
+        var rangeData = sheet.getRange(2, 1, lastRow - 1, mCols).getValues();
         var rangeFormulas = sheet.getRange(2, 9, lastRow - 1, 1).getFormulas();
-        var rangeRichText = sheet.getRange(2, 9, lastRow - 1, 1).getRichTextValues(); // RichText 링크 추출
-
-        var folder = null;
-        try {
-          if (DRIVE_FOLDER_ID) folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
-        } catch (_) {}
+        var rangeRichText = sheet.getRange(2, 9, lastRow - 1, 1).getRichTextValues();
 
         for (var i = 0; i < rangeData.length; i++) {
           var row = rangeData[i];
-          var rawTs     = row[0];
-          var userId    = String(row[1] || "").trim();
-          var cLine     = String(row[2] || "").trim();
-          var tLine     = String(row[3] || "").trim();
-          var resultRaw = String(row[4] || "").trim();
-          var valRaw    = row[5];
-          var errStr    = String(row[6] || "").trim();
-          var memoStr   = String(row[7] || "").trim();
-          var cropVal   = String(row[8] || "").trim();
-          var cropForm  = String((rangeFormulas[i] && rangeFormulas[i][0]) || "").trim();
-          var richText  = rangeRichText[i] && rangeRichText[i][0];
+          var userId = String(row[1] || "").trim();
 
           // 특정 userId 필터링 (파라미터가 있는 경우)
           if (targetUser && userId && userId !== targetUser) {
             continue;
           }
 
-          // 날짜 포맷 표준화 (초 단위 포함)
-          var tsFormatted = "";
-          if (rawTs instanceof Date) {
-            tsFormatted = Utilities.formatDate(rawTs, "Asia/Seoul", "yyyy-MM-dd HH:mm:ss");
-          } else {
-            var rawStr = String(rawTs || "").trim();
-            if (rawStr.length === 16) {
-              tsFormatted = rawStr + ":00";
-            } else {
-              tsFormatted = rawStr.slice(0, 19);
-            }
-          }
-
-          // 결과 한글화 매핑
-          var resultKorean = "실패";
-          if (resultRaw === "positive" || resultRaw === "양성") resultKorean = "양성";
-          else if (resultRaw === "negative" || resultRaw === "음성") resultKorean = "음성";
-
-          // 농도값 문자열
-          var concStr = "-";
-          if (resultKorean === "양성") {
-            concStr = (valRaw !== "" && valRaw !== null && valRaw !== undefined && valRaw !== "-") ? String(valRaw) : "0.01";
-          }
-
-          // ── 이미지 URL 및 Drive File ID 다중 추출 ──
-          var cropUrl = "";
-          var driveFileId = "";
-          var cropName = cropVal;
-
-          // 1) RichText 셀 링크 추출 (가장 최신 Google Sheets 링크 포맷)
-          if (richText) {
-            var rtLink = richText.getLinkUrl();
-            if (rtLink) cropUrl = rtLink;
-          }
-
-          // 2) 수식에서 추출: =HYPERLINK("URL", "FILENAME")
-          if (!cropUrl && cropForm) {
-            var m1 = cropForm.match(/HYPERLINK\s*\(\s*["']([^"']+)["']\s*(?:,\s*["']([^"']+)["'])?\s*\)/i);
-            if (m1) {
-              cropUrl = m1[1];
-              if (m1[2]) cropName = m1[2];
-            }
-          }
-
-          // 3) 텍스트 값 자체에 URL이 있는 경우
-          if (!cropUrl && cropVal.indexOf("http") > -1) {
-            cropUrl = cropVal;
-          }
-
-          // 4) URL에서 순수 file ID 추출 (25자 이상 영문숫자)
-          if (cropUrl) {
-            var idMatch = cropUrl.match(/[-\w]{25,}/);
-            if (idMatch) driveFileId = idMatch[0];
-          }
-
-          // 5) [중요] 드라이브 폴더에서 파일명으로 직접 파일 검색 (Fallback)
-          if (!driveFileId && folder && cropName && cropName.indexOf(".jpg") > -1) {
-            try {
-              var files = folder.getFilesByName(cropName);
-              if (files.hasNext()) {
-                var f = files.next();
-                driveFileId = f.getId();
-                cropUrl = f.getUrl();
-              }
-            } catch (_) {}
-          }
-
-          results.push({
-            id: "REC_SHEET_" + (i + 1),
-            rowIndex: i + 2,
-            timestamp: tsFormatted,
-            userNickname: userId,
-            cLine: cLine,
-            tLine: tLine,
-            result: resultKorean,
-            resultEnglish: resultRaw,
-            concentrationStr: concStr,
-            error: errStr,
-            memo: memoStr,
-            cropImageDataUrl: null,
-            cropUrl: cropUrl || null,
-            driveFileId: driveFileId || null,
-            cropFilename: cropName || (userId + "_" + tsFormatted.replace(/[- :]/g, "") + ".jpg")
-          });
+          var mForm = rangeFormulas[i] && rangeFormulas[i][0];
+          var mRich = rangeRichText[i] && rangeRichText[i][0];
+          var item = extractRowData(row, mForm, mRich, folder, false);
+          item.rowIndex = i + 2;
+          results.push(item);
         }
+        sortRecordsByTimestampDesc(results);
       }
-
-      // 최신 검사일시가 맨 위로 오도록 내림차순 정렬
-      results.sort(function(a, b) {
-        var parseDate = function(str) {
-          if (!str) return 0;
-          var m = String(str).match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})[\sT](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
-          if (m) {
-            return new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10), parseInt(m[4],10), parseInt(m[5],10), parseInt(m[6] || 0, 10)).getTime();
-          }
-          var d = new Date(String(str).replace(/\./g, "-"));
-          return !isNaN(d.getTime()) ? d.getTime() : 0;
-        };
-        return parseDate(b.timestamp) - parseDate(a.timestamp);
-      });
 
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
         total: results.length,
-        data: results
+        data: results,
+        trash: trashResults,
+        trashTotal: trashResults.length
       })).setMimeType(ContentService.MimeType.JSON);
 
     } catch (err) {
@@ -612,7 +699,7 @@ function doGet(e) {
   // 3. 기본 상태 응답
   return ContentService.createTextOutput(JSON.stringify({
     status: "online",
-    message: "YLS LFA Kit API v4.5.1 is running",
+    message: "YLS LFA Kit API v4.7.4 is running",
     driveFolderId: DRIVE_FOLDER_ID,
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);

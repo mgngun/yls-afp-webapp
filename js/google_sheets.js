@@ -49,7 +49,7 @@ class GoogleSheetsSync {
      */
     async fetchResults(userId = '') {
         const cfg = this.getConfig();
-        if (!cfg.webhookUrl) return { success: false, data: [] };
+        if (!cfg.webhookUrl) return { success: false, data: [], trash: [] };
 
         const targetUrl = new URL(cfg.webhookUrl);
         targetUrl.searchParams.set('action', 'fetch');
@@ -67,12 +67,17 @@ class GoogleSheetsSync {
             const json = await res.json();
 
             if (json && json.status === 'success' && Array.isArray(json.data)) {
-                return { success: true, data: json.data, total: json.total };
+                return { 
+                    success: true, 
+                    data: json.data, 
+                    total: json.total,
+                    trash: Array.isArray(json.trash) ? json.trash : []
+                };
             }
-            return { success: false, data: [], error: json?.message || 'Invalid response format' };
+            return { success: false, data: [], trash: [], error: json?.message || 'Invalid response format' };
         } catch (err) {
             console.warn('Google Sheets fetchResults error:', err);
-            return { success: false, data: [], error: err.message };
+            return { success: false, data: [], trash: [], error: err.message };
         }
     }
 
@@ -263,6 +268,52 @@ class GoogleSheetsSync {
             return { success: true };
         } catch (err) {
             console.warn('restoreFromTrash webhook error:', err);
+            return { success: false, error: err.message };
+        }
+    }
+
+    /**
+     * 서버(구글 시트) 휴지통에 보관된 삭제 기록 목록을 가져옵니다.
+     * @param {string} [userId] - 특정 사용자 필터링 (선택)
+     */
+    async fetchTrash(userId = '') {
+        const cfg = this.getConfig();
+        if (!cfg.webhookUrl) return { success: false, data: [] };
+
+        const targetUrl = new URL(cfg.webhookUrl);
+        targetUrl.searchParams.set('action', 'fetchTrash');
+        if (userId) targetUrl.searchParams.set('userId', userId);
+        targetUrl.searchParams.set('_t', Date.now().toString());
+
+        try {
+            const res = await fetch(targetUrl.toString(), {
+                method: 'GET',
+                mode: 'cors'
+            });
+
+            if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+            const json = await res.json();
+
+            if (json && json.status === 'success' && Array.isArray(json.data)) {
+                return { success: true, data: json.data, total: json.total };
+            }
+            return { success: false, data: [], error: json?.message || 'Invalid response format' };
+        } catch (err) {
+            console.warn('Google Sheets fetchTrash error:', err);
+            return { success: false, data: [], error: err.message };
+        }
+    }
+
+    /**
+     * 서버(구글 시트) 휴지통의 모든 데이터를 영구 삭제합니다.
+     */
+    async emptyTrash() {
+        if (!this.config.webhookUrl || !this.config.enabled) return { success: false };
+        try {
+            await this._sendToWebhook({ action: 'emptyTrash' });
+            return { success: true };
+        } catch (err) {
+            console.warn('emptyTrash webhook error:', err);
             return { success: false, error: err.message };
         }
     }
