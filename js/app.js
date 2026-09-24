@@ -299,7 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (err) {
             console.error('[GoogleUserAuth] login failed:', err);
-            showLoginError('사용자 서버에 연결할 수 없습니다. 인터넷 연결과 Google Sheets 연동 설정을 확인해 주세요.');
+            showLoginError('사용자 서버에 연결할 수 없습니다. 인터넷 연결과 서버 연동 설정을 확인해 주세요.');
         }
     }
 
@@ -1700,7 +1700,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 }
 
                                 if (oldResult !== newResult && state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
-                                    showToast(`판정 변경 (${oldResult} ➔ ${newResult}): 구글 시트 동기화 중...`);
+                                    showToast(`판정 변경 (${oldResult} ➔ ${newResult}): 서버 동기화 중...`);
                                     state.sheetsSync.syncResult(
                                         analysisRes,
                                         state.currentUser,
@@ -1713,11 +1713,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                             driveFileId: record.driveFileId || null
                                         }
                                     ).then(() => {
-                                        console.log(`[GoogleSheets] 레코드(${record.id}) 업데이트 성공: ${oldResult} -> ${newResult}`);
-                                        showToast(`구글 시트에 '${newResult}' 판정으로 업데이트 완료되었습니다.`);
+                                        console.log(`[ServerSync] 레코드(${record.id}) 업데이트 성공: ${oldResult} -> ${newResult}`);
+                                        showToast(`서버에 '${newResult}' 판정으로 업데이트 완료되었습니다.`);
                                     }).catch(err => {
-                                        console.warn('Google Sheets update sync error:', err);
-                                        showToast('구글 시트 업데이트 전송 실패');
+                                        console.warn('Server update sync error:', err);
+                                        showToast('서버 업데이트 전송 실패');
                                     });
                                 }
                             }
