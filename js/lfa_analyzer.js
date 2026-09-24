@@ -35,9 +35,9 @@ class LFAAnalyzer {
             absoluteMinCPeak: 0.015,       // Standard threshold
             weakCMinPeak: 0.008,           // Weak threshold
             weakCMinSNR: 5.0,              // Weak C-line requires SNR >= 5
-            absoluteMinTPeak: 0.010,       // ↑ 0.008 → 0.010: T=0.005 노이즈 차단 (핵심 필터)
-            weakTMinPeak: 0.008,           // ↑ 0.0045 → 0.008: weak 경로도 상향
-            weakTMinSNR: 4.0,              // 원복: SNR 기준이 너무 높으면 T=0.022도 탈락
+            absoluteMinTPeak: 0.010,       // Standard threshold
+            weakTMinPeak: 0.009,           // 0.008 -> 0.009: 단일 점 노이즈 차단 강화
+            weakTMinSNR: 4.0,              // SNR 기준
             
             // T/C ratio — 보조 필터 (C-line이 매우 강할 때 ratio가 낮아지므로 최소값만 유지)
             minTCRatio: 0.03,              // 원복: ratio 기준은 보조 역할만, 주 필터는 절대 임계값
@@ -729,19 +729,16 @@ class LFAAnalyzer {
     }
 
     /**
-     * Spatial Consistency Validation (3-Zone Majority Vote)
+     * Spatial Consistency Validation (3-Zone Majority Vote & Uniformity Check)
      *
      * Divides the strip horizontally into three independent zones:
      *   Left (15-40%), Mid (35-65%), Right (60-85%)
-     * For each candidate peak (T-line or C-line), independently checks whether a
-     * signal drop (absorption) exists near the expected peak position in each zone.
-     * A real membrane line appears uniformly across the full width → all 3 zones show signal.
-     * An artifact (dust, debris, speck) is localized → only 1 zone shows signal.
+     * A real membrane band (C-line or T-line) forms a continuous horizontal line across
+     * the strip, meaning ALL THREE zones (or at least 2 with substantial uniformity)
+     * must exhibit a synchronized absorption peak at the exact same flow position.
      *
-     * Decision rule:
-     *   • If ≥ 2 of 3 zones confirm a peak → valid (majority vote passes)
-     *   • If only 1 zone confirms → reject as localized artifact
-     *   • Strong peaks (height ≥ 0.025 AND fwhm ≥ 3) skip voting and are always accepted
+     * In contrast, dust specks, debris, and sample artifacts are localized spots:
+     * one zone shows a sharp dip while the other zones remain flat (baseline noise).
      */
     _validateSpatialConsistency(peakResults, stripROI) {
         if (!stripROI || !stripROI.imgData) return;
@@ -752,65 +749,94 @@ class LFAAnalyzer {
             const line = peakResults[lineKey];
             if (!line || !line.detected || line.index < 0) continue;
 
-            // Strong, clearly-defined signals are always valid — skip voting
-            if (line.height >= 0.025 && line.fwhm >= 3) {
+            // Very strong signals across the board are accepted directly
+            if (line.height >= 0.035 && line.fwhm >= 4) {
                 line.horizontalCoverage = 1.0;
                 line.zoneVotes = [true, true, true];
                 continue;
             }
 
             const peakIdx = line.index;
-            const halfFwhm = Math.max(3, Math.round(line.fwhm / 2));
-            const searchStart = Math.max(0, peakIdx - halfFwhm);
-            const searchEnd   = Math.min(height - 1, peakIdx + halfFwhm);
-            // Background window: just outside the FWHM zone
-            const bgOffset = Math.max(5, Math.round(line.fwhm * 1.5));
+            // Narrow search around peak center (±2 pixels) to test peak synchronization
+            const searchStart = Math.max(0, peakIdx - 2);
+            const searchEnd   = Math.min(height - 1, peakIdx + 2);
+
+            // Background baseline: measure local flat background above & below peak
+            const bgOffset = Math.max(6, Math.round((line.fwhm || 8) * 1.5));
             const bgIdxA   = Math.max(0, peakIdx - bgOffset);
             const bgIdxB   = Math.min(height - 1, peakIdx + bgOffset);
 
+            const drops = [];
             const zoneVotes = [false, false, false];
-            let confirmedZones = 0;
 
-            if (zoneProfiles) {
+            if (zoneProfiles && zoneProfiles.L && zoneProfiles.M && zoneProfiles.R) {
                 const zoneKeys = ['L', 'M', 'R'];
                 zoneKeys.forEach((key, zi) => {
                     const prof = zoneProfiles[key];
-                    if (!prof) return;
-
-                    // Background level for this zone (average of two reference points)
                     const bg = (prof[bgIdxA] + prof[bgIdxB]) / 2;
 
-                    // Find the minimum (= maximum absorption = darkest) within search window
-                    let minVal = prof[searchStart];
-                    for (let i = searchStart + 1; i <= searchEnd; i++) {
+                    // Find minimum value (maximum absorption) in immediate vicinity of peak
+                    let minVal = prof[peakIdx];
+                    for (let i = searchStart; i <= searchEnd; i++) {
                         if (prof[i] < minVal) minVal = prof[i];
                     }
 
-                    // Signal drop relative to background brightness
-                    const drop = bg - minVal;
-                    const dropRatio = bg > 0 ? drop / bg : 0;
+                    // Normalized absorption drop
+                    const drop = bg > 0 ? (bg - minVal) / bg : 0;
+                    drops.push(drop);
 
-                    // A zone "votes" if it sees a meaningful absorption drop
-                    // Dynamic threshold: proportional to detected line height, minimum 0.3%
-                    const voteThreshold = Math.max(0.003, line.height * 0.25);
-                    if (dropRatio >= voteThreshold) {
+                    // A zone confirms line existence if drop is at least 0.005 (0.5% absorption)
+                    if (drop >= 0.005) {
                         zoneVotes[zi] = true;
-                        confirmedZones++;
                     }
                 });
             } else {
-                // Fallback: no zone profiles available → treat as passed (legacy behaviour)
-                confirmedZones = 3;
+                drops.push(line.height, line.height, line.height);
                 zoneVotes.fill(true);
             }
 
-            line.zoneVotes = zoneVotes;
-            line.horizontalCoverage = Math.round((confirmedZones / 3) * 100) / 100;
+            const sortedDrops = drops.slice().sort((a, b) => a - b);
+            const minDrop = sortedDrops[0];
+            const medDrop = sortedDrops[1];
+            const maxDrop = sortedDrops[2];
 
-            // Majority vote: need at least 2 of 3 zones
-            if (confirmedZones < 2) {
+            const confirmedCount = zoneVotes.filter(Boolean).length;
+            line.zoneVotes = zoneVotes;
+            line.zoneDrops = drops;
+            line.horizontalCoverage = Math.round((confirmedCount / 3) * 100) / 100;
+
+            // Reject criteria for T-Line:
+            // 1) Majority vote failed: fewer than 2 zones confirmed (confirmedCount < 2)
+            // 2) Spot/Dust artifact: one zone has a noticeable drop, but at least one zone is flat (minDrop < 0.0025)
+            //    and median drop is insufficient (< 0.0055)
+            // 3) Extreme asymmetry: max drop is more than 3.5x median drop (single-point contamination)
+            let isRejected = false;
+            let rejectReason = '';
+
+            if (lineKey === 'tLine') {
+                if (confirmedCount < 2) {
+                    isRejected = true;
+                    rejectReason = 'insufficient_zone_confirmations';
+                } else if (medDrop < 0.0055) {
+                    isRejected = true;
+                    rejectReason = 'low_median_zone_signal';
+                } else if (maxDrop >= 0.008 && minDrop < 0.0025) {
+                    isRejected = true;
+                    rejectReason = 'localized_speck_dust_artifact';
+                } else if (medDrop > 0 && maxDrop > medDrop * 3.5 && line.height < 0.025) {
+                    isRejected = true;
+                    rejectReason = 'extreme_spatial_asymmetry';
+                }
+            } else if (lineKey === 'cLine') {
+                if (confirmedCount < 2 && line.height < 0.020) {
+                    isRejected = true;
+                    rejectReason = 'cline_spatial_failure';
+                }
+            }
+
+            if (isRejected) {
                 line.detected = false;
-                line.rejectedReason = 'zone_vote_failed_localized_artifact';
+                line.rejectedReason = rejectReason;
             }
         }
 

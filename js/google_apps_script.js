@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * YLS LFA AFP 진단 키트 - Google Apps Script (GAS) 백엔드 코드
- * 구글 시트 저장/수정(중복 방지) + 구글 드라이브 이미지 연동 (v4.5.1)
+ * 구글 시트 저장/수정(중복 방지 & rowIndex 덮어쓰기) + 구글 드라이브 이미지 연동 (v4.6.0)
  * ============================================================================
  * 
  * [설정된 구글 리소스]
@@ -122,10 +122,30 @@ function doPost(e) {
     var lastRowIdx = sheet.getLastRow();
     var targetRow = -1;
 
-    if (lastRowIdx > 1) {
+    // [1순위 매칭] 클라이언트가 직접 넘겨준 rowIndex 유효성 검사
+    var reqRowIndex = data.rowIndex || data.rowNumber;
+    if (reqRowIndex && Number(reqRowIndex) >= 2 && Number(reqRowIndex) <= lastRowIdx) {
+      targetRow = Number(reqRowIndex);
+    }
+
+    // [2순위 매칭] 파일명 또는 날짜/사용자 정규화 매칭
+    if (targetRow === -1 && lastRowIdx > 1) {
       // 2행부터 마지막 행까지의 데이터 (Col 1: timestamp, Col 2: userId, Col 9: Crop_image)
       var displayValues = sheet.getRange(2, 1, lastRowIdx - 1, 9).getDisplayValues();
       
+      // 날짜를 YYYYMMDDHHmm (12자리 숫자)로 정규화하는 헬퍼 함수
+      function toDateDigits(str) {
+        if (!str) return "";
+        var m = String(str).match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})[\sT.]+(\d{1,2}):(\d{1,2})/);
+        if (m) {
+          var pad = function(n) { return (n.length < 2 ? "0" + n : n); };
+          return m[1] + pad(m[2]) + pad(m[3]) + pad(m[4]) + pad(m[5]);
+        }
+        return String(str).replace(/\D/g, "").slice(0, 12);
+      }
+
+      var targetDigits = toDateDigits(timestamp);
+
       // 최근에 등록된 행일 가능성이 높으므로 역순(마지막 행부터)으로 검색
       for (var i = displayValues.length - 1; i >= 0; i--) {
         var rowNum = i + 2; // 시트 1-indexed 실제 행 번호
@@ -133,13 +153,12 @@ function doPost(e) {
         var rowUser = (displayValues[i][1] || "").trim();
         var rowCrop = (displayValues[i][8] || "").trim();
 
-        // 1순위 매칭: 파일명 일치
+        // 1) 파일명 일치
         var isFileMatch = rawFilename && rowCrop && (rowCrop.indexOf(rawFilename) !== -1 || rawFilename.indexOf(rowCrop) !== -1);
         
-        // 2순위 매칭: timestamp와 userId 일치 (공백 제거 후 비교)
-        var cleanTs = timestamp ? timestamp.replace(/\s+/g, '') : '';
-        var cleanRowTs = rowTs ? rowTs.replace(/\s+/g, '') : '';
-        var isTimeMatch = cleanTs && cleanRowTs && (cleanTs === cleanRowTs);
+        // 2) 정규화된 12자리 날짜/시간 + 사용자 ID 일치
+        var rowDigits = toDateDigits(rowTs);
+        var isTimeMatch = targetDigits && rowDigits && (targetDigits === rowDigits);
         var isUserMatch = !userId || !rowUser || (rowUser === userId);
 
         if (isFileMatch || (isTimeMatch && isUserMatch)) {
@@ -156,7 +175,8 @@ function doPost(e) {
       if (cLine) sheet.getRange(targetRow, 3).setValue(cLine);
       if (tLine) sheet.getRange(targetRow, 4).setValue(tLine);
       if (result) sheet.getRange(targetRow, 5).setValue(result);
-      if (value !== undefined && value !== "") sheet.getRange(targetRow, 6).setValue(value);
+      // 음성/실패 시 이전 농도값 클리어 지원
+      sheet.getRange(targetRow, 6).setValue((value !== undefined && value !== null) ? value : "");
       if (errorMsg) sheet.getRange(targetRow, 7).setValue(errorMsg);
       if (data.Memo !== undefined || data.memo !== undefined) {
         sheet.getRange(targetRow, 8).setValue(memo);

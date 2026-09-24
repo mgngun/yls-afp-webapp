@@ -110,7 +110,7 @@ class GoogleSheetsSync {
         }
     }
 
-    async syncResult(analysisResult, user = {}, memo = '', cropFilename = '', cropDataUrl = null, customTimestamp = null) {
+    async syncResult(analysisResult, user = {}, memo = '', cropFilename = '', cropDataUrl = null, customTimestamp = null, extraData = {}) {
         if (!analysisResult) return;
         const diag = analysisResult.diagnosis || {};
         return this.recordResult({
@@ -126,7 +126,9 @@ class GoogleSheetsSync {
             errorReason:       diag.errorReason,
             memo:              memo,
             cropFilename:      cropFilename,
-            cropImageBase64:   cropDataUrl
+            cropImageBase64:   cropDataUrl,
+            rowIndex:          extraData.rowIndex || null,
+            driveFileId:       extraData.driveFileId || null
         });
     }
 
@@ -150,7 +152,9 @@ class GoogleSheetsSync {
             Memo:              record.memo          || '',
             Crop_image:        record.cropFilename  || '',
             crop_filename:     record.cropFilename  || '',
-            crop_image_base64: record.cropImageBase64 || ''
+            crop_image_base64: record.cropImageBase64 || '',
+            rowIndex:          record.rowIndex || null,
+            driveFileId:       record.driveFileId || null
         };
 
         // 1. Add to local queue / history

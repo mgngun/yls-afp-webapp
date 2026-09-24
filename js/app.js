@@ -1528,7 +1528,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     history[idx].memo,
                     history[idx].cropFilename || '',
                     history[idx].cropImageDataUrl || '',
-                    history[idx].timestamp
+                    history[idx].timestamp,
+                    {
+                        rowIndex: history[idx].rowIndex || null,
+                        driveFileId: history[idx].driveFileId || null
+                    }
                 ).catch(e => console.warn('Memo sheet sync error:', e));
             }
         }
@@ -1696,16 +1700,25 @@ document.addEventListener('DOMContentLoaded', () => {
                                 }
 
                                 if (oldResult !== newResult && state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
+                                    showToast(`판정 변경 (${oldResult} ➔ ${newResult}): 구글 시트 동기화 중...`);
                                     state.sheetsSync.syncResult(
                                         analysisRes,
                                         state.currentUser,
                                         record.memo || '',
                                         record.cropFilename || '',
                                         record.cropImageDataUrl || imgSrc,
-                                        record.timestamp
+                                        record.timestamp,
+                                        {
+                                            rowIndex: record.rowIndex || null,
+                                            driveFileId: record.driveFileId || null
+                                        }
                                     ).then(() => {
                                         console.log(`[GoogleSheets] 레코드(${record.id}) 업데이트 성공: ${oldResult} -> ${newResult}`);
-                                    }).catch(err => console.warn('Google Sheets update sync error:', err));
+                                        showToast(`구글 시트에 '${newResult}' 판정으로 업데이트 완료되었습니다.`);
+                                    }).catch(err => {
+                                        console.warn('Google Sheets update sync error:', err);
+                                        showToast('구글 시트 업데이트 전송 실패');
+                                    });
                                 }
                             }
                         }).catch(e => console.warn('Realtime profile analysis failed:', e));
