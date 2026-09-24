@@ -1518,11 +1518,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const currentUser = state.currentUser.username;
                 const res = await state.sheetsSync.fetchTrash(currentUser);
                 if (res && res.success && Array.isArray(res.data)) {
-                    // 현재 사용자의 휴지통 항목만 저장
+                    // 현재 사용자의 휴지통 항목만 필터링
                     const filteredTrash = res.data.filter(r =>
                         !r.userNickname || r.userNickname === currentUser
                     );
-                    localStorage.setItem('yls_lfa_trash', JSON.stringify(filteredTrash));
+                    // 다른 사용자의 기존 로컬 휴지통 데이터 보존
+                    const existingTrash = JSON.parse(localStorage.getItem('yls_lfa_trash') || '[]');
+                    const otherUsersTrash = existingTrash.filter(r =>
+                        currentUser && r.userNickname && r.userNickname !== currentUser
+                    );
+                    localStorage.setItem('yls_lfa_trash', JSON.stringify([...filteredTrash, ...otherUsersTrash]));
                     renderTrashList();
                 }
             } catch (err) {
@@ -1607,9 +1612,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const restored = { ...trash[targetIdx] };
         delete restored.deletedAt;
 
-        // 휴지통에서 제거
-        trash.splice(targetIdx, 1);
-        localStorage.setItem('yls_lfa_trash', JSON.stringify(trash));
+        // 휴지통에서 해당 ID만 안전하게 제거 (다른 사용자 항목 보존)
+        const rawTrash = JSON.parse(localStorage.getItem('yls_lfa_trash') || '[]');
+        const updatedTrash = rawTrash.filter(r => r.id !== recordId);
+        localStorage.setItem('yls_lfa_trash', JSON.stringify(updatedTrash));
 
         // 기존 검사 결과로 복원 (원래 일시분초 그대로 복귀)
         const rawHistory = JSON.parse(localStorage.getItem('yls_lfa_history') || '[]');
@@ -1644,7 +1650,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const combined = sortHistoryByDateDesc([...rawHistory, ...restoredItems]);
         localStorage.setItem('yls_lfa_history', JSON.stringify(combined));
-        localStorage.setItem('yls_lfa_trash', JSON.stringify([]));
+
+        // 현재 사용자의 항목만 로컬 휴지통에서 제거하고, 다른 사용자의 휴지통 항목은 유지
+        const currentUser = state.currentUser ? state.currentUser.username : null;
+        const rawTrash = JSON.parse(localStorage.getItem('yls_lfa_trash') || '[]');
+        const remainingTrash = rawTrash.filter(item =>
+            currentUser && item.userNickname && item.userNickname !== currentUser
+        );
+        localStorage.setItem('yls_lfa_trash', JSON.stringify(remainingTrash));
 
         showToast(`${restoredItems.length}개의 검사 결과가 모두 복원되었습니다.`);
         renderTrashList();
@@ -1668,16 +1681,22 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        localStorage.setItem('yls_lfa_trash', JSON.stringify([]));
+        const currentUser = state.currentUser ? state.currentUser.username : null;
+        // 로컬 휴지통에서도 현재 로그인 사용자의 항목만 삭제하고, 다른 사용자의 휴지통 항목은 안전하게 유지
+        const rawTrash = JSON.parse(localStorage.getItem('yls_lfa_trash') || '[]');
+        const remainingTrash = rawTrash.filter(item =>
+            currentUser && item.userNickname && item.userNickname !== currentUser
+        );
+        localStorage.setItem('yls_lfa_trash', JSON.stringify(remainingTrash));
 
         showToast('휴지통이 비워졌습니다.');
         renderTrashList();
         renderResultsTable();
 
-        // 서버 휴지통 비우기 동기화
+        // 서버 휴지통 비우기 동기화 (현재 로그인 사용자만 전달)
         if (state.sheetsSync && typeof state.sheetsSync.emptyTrash === 'function') {
             try {
-                await state.sheetsSync.emptyTrash();
+                await state.sheetsSync.emptyTrash(currentUser);
             } catch (err) {
                 console.warn('Server emptyTrash sync error:', err);
             }

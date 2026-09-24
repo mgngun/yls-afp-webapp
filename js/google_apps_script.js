@@ -242,19 +242,36 @@ function doPost(e) {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // [ACTION: emptyTrash] 휴지통 시트의 모든 보관 기록 완전 비우기
+    // [ACTION: emptyTrash] 휴지통 시트 보관 기록 비우기 (사용자별 또는 전체)
     // ─────────────────────────────────────────────────────────────
     if (data.action === "emptyTrash") {
       var trashSheet = ss.getSheetByName("Trash");
       var emptiedCount = 0;
+      var targetUser = (data.User_ID || data.userId || "").toString().trim();
+
       if (trashSheet && trashSheet.getLastRow() > 1) {
-        emptiedCount = trashSheet.getLastRow() - 1;
-        trashSheet.deleteRows(2, emptiedCount);
+        if (targetUser) {
+          // 특정 사용자(targetUser)의 휴지통 행만 찾아서 역순으로 삭제
+          var lastRow = trashSheet.getLastRow();
+          var userIds = trashSheet.getRange(2, 2, lastRow - 1, 1).getValues(); // B열: User_ID
+          for (var r = userIds.length - 1; r >= 0; r--) {
+            var rowUser = String(userIds[r][0] || "").trim();
+            if (rowUser === targetUser) {
+              trashSheet.deleteRow(r + 2);
+              emptiedCount++;
+            }
+          }
+        } else {
+          // targetUser 미지정 시 전체 비우기 (관리자 등)
+          emptiedCount = trashSheet.getLastRow() - 1;
+          trashSheet.deleteRows(2, emptiedCount);
+        }
       }
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
         action: "emptyTrash",
-        emptiedCount: emptiedCount
+        emptiedCount: emptiedCount,
+        userId: targetUser
       })).setMimeType(ContentService.MimeType.JSON);
     }
     

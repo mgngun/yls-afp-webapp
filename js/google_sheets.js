@@ -305,12 +305,18 @@ class GoogleSheetsSync {
     }
 
     /**
-     * 서버(구글 시트) 휴지통의 모든 데이터를 영구 삭제합니다.
+     * 서버(구글 시트) 휴지통의 데이터를 영구 삭제합니다.
+     * userId를 전달하면 해당 사용자의 휴지통 항목만 삭제합니다.
      */
-    async emptyTrash() {
+    async emptyTrash(userId) {
         if (!this.config.webhookUrl || !this.config.enabled) return { success: false };
         try {
-            await this._sendToWebhook({ action: 'emptyTrash' });
+            const payload = { action: 'emptyTrash' };
+            if (userId) {
+                payload.userId = userId;
+                payload.User_ID = userId;
+            }
+            await this._sendToWebhook(payload);
             return { success: true };
         } catch (err) {
             console.warn('emptyTrash webhook error:', err);
