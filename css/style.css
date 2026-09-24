@@ -716,32 +716,38 @@ body {
     gap: 12px;
 }
 
-.btn-confirm-action {
+.btn-confirm-action,
+.btn-confirm,
+#btn-confirm-no,
+#btn-confirm-yes {
     flex: 1;
     height: 52px;
     background-color: var(--primary);
     color: #ffffff;
-    font-size: 15px;
+    font-size: 18px;
     font-weight: 700;
     font-family: var(--font-family);
     border: none;
     border-radius: var(--radius-md);
     cursor: pointer;
-    line-height: 1.3;
-    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 14px var(--primary-glow);
+    transition: all 0.2s ease;
 }
 
-.btn-confirm-action small {
-    font-size: 11px;
-    font-weight: 400;
-    opacity: 0.9;
-}
-
-.btn-confirm-action:hover {
+.btn-confirm-action:hover,
+.btn-confirm:hover,
+#btn-confirm-no:hover,
+#btn-confirm-yes:hover {
     background-color: var(--primary-hover);
 }
 
-.btn-confirm-action:active {
+.btn-confirm-action:active,
+.btn-confirm:active,
+#btn-confirm-no:active,
+#btn-confirm-yes:active {
     transform: scale(0.98);
 }
 
