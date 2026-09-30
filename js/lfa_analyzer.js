@@ -47,8 +47,8 @@ class LFAAnalyzer {
             
             // Calibration curve coefficients
             calibration: {
-                a: 0.05,
-                b: 0.25,
+                a: 5.0,
+                b: 25.0,
                 unit: 'ng/dL'
             },
             
@@ -898,7 +898,7 @@ class LFAAnalyzer {
         const ratio = Math.max(0.01, peakResults.tcRatio);
         
         let rawConc = a * ratio + b * Math.pow(ratio, 1.4);
-        rawConc = Math.max(0.01, Math.round(rawConc * 100) / 100);
+        rawConc = Math.max(1.00, Math.round(rawConc * 100) / 100);
 
         return {
             result: '양성',

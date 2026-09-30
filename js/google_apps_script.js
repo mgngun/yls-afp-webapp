@@ -406,7 +406,7 @@ function doPost(e) {
       sheet.getRange(targetRow, 5).setValue(result || "negative");
       // 양성이면 농도값 기록, 음성/실패 시 이전 농도값 클리어
       var isPositive = (result === "positive" || result === "양성");
-      sheet.getRange(targetRow, 6).setValue(isPositive ? ((value !== "" && value !== null && value !== undefined) ? value : "0.01") : "");
+      sheet.getRange(targetRow, 6).setValue(isPositive ? ((value !== "" && value !== null && value !== undefined) ? value : "1.00") : "");
       sheet.getRange(targetRow, 7).setValue(errorMsg || "");
       if (data.Memo !== undefined || data.memo !== undefined) {
         sheet.getRange(targetRow, 8).setValue(memo);
@@ -421,7 +421,7 @@ function doPost(e) {
     } else {
       // [신규 행 추가]
       var isPos = (result === "positive" || result === "양성");
-      var valToSave = isPos ? ((value !== "" && value !== null && value !== undefined) ? value : "0.01") : "";
+      var valToSave = isPos ? ((value !== "" && value !== null && value !== undefined) ? value : "1.00") : "";
       var newRow = [
         timestamp,
         userId,
@@ -504,7 +504,7 @@ function extractRowData(row, cropForm, richText, folder, isTrash) {
   // 농도값 문자열
   var concStr = "-";
   if (resultKorean === "양성") {
-    concStr = (valRaw !== "" && valRaw !== null && valRaw !== undefined && valRaw !== "-") ? String(valRaw) : "0.01";
+    concStr = (valRaw !== "" && valRaw !== null && valRaw !== undefined && valRaw !== "-") ? String(valRaw) : "1.00";
   }
 
   // ── 이미지 URL 및 Drive File ID 다중 추출 ──

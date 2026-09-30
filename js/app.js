@@ -57,21 +57,21 @@ document.addEventListener('DOMContentLoaded', () => {
     function buildMockHistory() {
         const rows = [
             { ts: '2026-08-26 10:15', res: '실패', conc: '-', memo: '' },
-            { ts: '2026-08-24 13:45', res: '양성', conc: '0.01', memo: '첫 번째 양성 결과' },
+            { ts: '2026-08-24 13:45', res: '양성', conc: '1.00', memo: '첫 번째 양성 결과' },
             { ts: '2026-08-22 17:15', res: '음성', conc: '-', memo: '' },
             { ts: '2026-08-20 11:02', res: '음성', conc: '-', memo: '정상 확인' },
-            { ts: '2026-08-19 13:45', res: '양성', conc: '0.02', memo: '재검 필요' },
+            { ts: '2026-08-19 13:45', res: '양성', conc: '2.00', memo: '재검 필요' },
             { ts: '2026-08-18 17:15', res: '음성', conc: '-', memo: '' },
             { ts: '2026-08-17 11:02', res: '실패', conc: '-', memo: '' },
-            { ts: '2026-08-15 13:45', res: '양성', conc: '0.01', memo: '' },
+            { ts: '2026-08-15 13:45', res: '양성', conc: '1.00', memo: '' },
             { ts: '2026-08-14 17:15', res: '음성', conc: '-', memo: '' },
             { ts: '2026-08-13 11:02', res: '음성', conc: '-', memo: '' },
             { ts: '2026-08-11 11:02', res: '실패', conc: '-', memo: '' },
-            { ts: '2026-08-10 13:45', res: '양성', conc: '0.01', memo: '' },
+            { ts: '2026-08-10 13:45', res: '양성', conc: '1.00', memo: '' },
             { ts: '2026-08-08 17:15', res: '음성', conc: '-', memo: '' },
             { ts: '2026-08-06 11:02', res: '실패', conc: '-', memo: '' },
             { ts: '2026-08-05 17:15', res: '음성', conc: '-', memo: '' },
-            { ts: '2026-08-03 09:30', res: '양성', conc: '0.03', memo: '추가 검사 권고' },
+            { ts: '2026-08-03 09:30', res: '양성', conc: '3.00', memo: '추가 검사 권고' },
             { ts: '2026-08-01 14:00', res: '음성', conc: '-', memo: '' },
             { ts: '2026-07-30 10:45', res: '음성', conc: '-', memo: '' },
         ];
@@ -1091,7 +1091,7 @@ document.addEventListener('DOMContentLoaded', () => {
             id: 'REC_' + Date.now(),
             timestamp: ts,
             result: diag.result || '실패',
-            concentrationStr: diag.result === '양성' ? (diag.concentrationStr || '0.01') : '-',
+            concentrationStr: diag.result === '양성' ? (diag.concentrationStr || '1.00') : '-',
             userNickname: state.currentUser.username,
             memo: '',
             cropImageDataUrl: cropDataUrl,
@@ -1294,7 +1294,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let cls = 'col-negative', label = '음성', val = '-';
             if (rec.result === '양성' || rec.result === 'positive') {
                 cls = 'col-positive'; label = '양성';
-                val = (rec.concentrationStr && rec.concentrationStr !== '-') ? rec.concentrationStr : '0.01';
+                val = (rec.concentrationStr && rec.concentrationStr !== '-') ? rec.concentrationStr : '1.00';
             } else if (rec.result === '실패' || rec.result === 'fail') {
                 cls = 'col-fail'; label = '실패';
             }
@@ -1947,7 +1947,7 @@ document.addEventListener('DOMContentLoaded', () => {
             `"${r.cLine || (r.result === '실패' ? 'none' : 'ok')}"`,
             `"${r.tLine || (r.result === '양성' ? 'ok' : 'none')}"`,
             `"${r.resultEnglish || (r.result === '양성' ? 'positive' : r.result === '음성' ? 'negative' : 'fail')}"`,
-            `"${r.concentrationStr && r.concentrationStr !== '-' ? r.concentrationStr : (r.result === '양성' ? '0.01' : '')}"`,
+            `"${r.concentrationStr && r.concentrationStr !== '-' ? r.concentrationStr : (r.result === '양성' ? '1.00' : '')}"`,
             `"${r.error || ''}"`,
             `"${r.memo || ''}"`,
             `"${r.cropUrl || r.cropFilename || ''}"`
