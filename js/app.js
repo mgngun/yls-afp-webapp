@@ -2103,12 +2103,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return `검사일시 : ${str}`;
     }
 
-    function updateResultBadge(resText) {
+    function updateResultBadge(resText, concText) {
         if (!el.graphPopupResult) return;
         const res = resText || '실패';
-        el.graphPopupResult.textContent = `‘검사결과 : ${res}’`;
+        const isPositive = (res === '양성' || res === 'positive');
+        
+        let label = `‘검사결과 : ${res}’`;
+        if (isPositive) {
+            const concVal = (concText && concText !== '-') ? concText : '1.00';
+            label = `‘검사결과 : ${res}’ (농도 : ${concVal})`;
+        }
+
+        el.graphPopupResult.textContent = label;
         el.graphPopupResult.className = 'graph-popup-result-badge';
-        if (res === '양성' || res === 'positive') {
+        if (isPositive) {
             el.graphPopupResult.classList.add('badge-positive');
         } else if (res === '음성' || res === 'negative') {
             el.graphPopupResult.classList.add('badge-negative');
@@ -2125,7 +2133,7 @@ document.addEventListener('DOMContentLoaded', () => {
             el.graphPopupDatetime.textContent = formatPopupDateTime(record.timestamp);
         }
 
-        updateResultBadge(record.result);
+        updateResultBadge(record.result, record.concentrationStr);
 
         const sc = el.graphStripCanvas;
         if (sc) {
@@ -2195,7 +2203,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const newResult = diag.result || '실패';
                                 const newConc = (newResult === '양성') ? (diag.concentrationStr || '1.00') : '-';
 
-                                updateResultBadge(newResult);
+                                updateResultBadge(newResult, newConc);
 
                                 record.profileData = {
                                     corrected: Array.from(vd.correctedProfile || []),
