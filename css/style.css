@@ -1695,59 +1695,76 @@ body {
 
 /* Graph Popup */
 .graph-popup-card {
-    max-width: 400px;
-    max-height: 90vh;
+    max-width: 440px;
+    width: 95%;
+    max-height: 94vh;
     overflow-y: auto;
 }
 
 .graph-popup-header {
-    align-items: flex-start;
+    padding: 10px 14px 8px;
+    align-items: center;
+    border-bottom: 1px solid #e2e8f0;
 }
 
-.graph-popup-datetime-row {
-    margin-bottom: 2px;
-    white-space: nowrap;
+.graph-popup-header-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.graph-popup-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 3px;
+    flex-wrap: nowrap;
 }
 
 .graph-popup-datetime {
-    font-size: 11.5px;
-    font-weight: 700;
-    color: #0f172a;
+    font-size: 11px;
+    font-weight: 600;
+    color: #475569;
     letter-spacing: -0.01em;
     white-space: nowrap;
 }
 
-.graph-popup-channel-row {
-    margin-bottom: 3px;
+.graph-popup-channel-tag {
+    font-size: 10px;
+    color: #059669;
+    background: #ecfdf5;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: 600;
     white-space: nowrap;
-}
-
-.graph-popup-sub {
-    font-size: 11px;
-    color: #64748b;
-    font-weight: 500;
-    white-space: nowrap;
-}
-
-.graph-popup-header .popup-title {
-    font-size: 15px;
-    font-weight: 700;
-    color: #0f172a;
+    border: 1px solid #d1fae5;
 }
 
 .graph-popup-title-row {
     display: flex;
-    align-items: baseline;
-    gap: 8px 12px;
-    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.graph-popup-header .popup-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .graph-popup-result-badge {
-    font-size: 14.5px;
+    font-size: 13.5px;
     font-weight: 700;
     color: #0f172a;
     letter-spacing: -0.02em;
-    word-break: keep-all;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .graph-popup-result-badge.badge-positive {
@@ -1763,50 +1780,53 @@ body {
 }
 
 .graph-popup-body {
-    padding: 14px 16px;
+    padding: 10px 14px 8px;
 }
 
 .graph-visuals {
     display: flex;
     gap: 10px;
     align-items: stretch;
-    margin-bottom: 14px;
+    margin-bottom: 10px;
+    height: 220px;
 }
 
 .graph-strip-canvas {
-    width: 72px !important;
-    height: auto !important;
-    min-height: 140px;
+    width: 76px !important;
+    height: 220px !important;
     border-radius: 6px;
     border: 1px solid #e2e8f0;
     flex-shrink: 0;
     display: block;
     object-fit: contain;
+    background: #f8fafc;
 }
 
 .graph-profile-canvas {
     flex: 1;
+    height: 220px !important;
     border-radius: 6px;
     border: 1px solid #e2e8f0;
     display: block;
     background: #f8fafc;
+    min-width: 0;
 }
 
 /* Metrics grid */
 .graph-metrics-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: 6px;
 }
 
 .graph-metric-item {
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: var(--radius-sm);
-    padding: 10px 12px;
+    padding: 6px 10px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
 }
 
 .graph-metric-label {
@@ -1816,7 +1836,7 @@ body {
 }
 
 .graph-metric-value {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     color: #0f172a;
     font-family: monospace;
@@ -1828,6 +1848,17 @@ body {
 
 .graph-metric-value.c-value {
     color: #059669;
+}
+
+.graph-popup-card .popup-btn-row {
+    padding: 8px 14px;
+    gap: 8px;
+}
+
+.graph-popup-card .btn-popup-cancel,
+.graph-popup-card .btn-popup-confirm {
+    height: 38px;
+    font-size: 13.5px;
 }
 
 /* ==========================================================================
