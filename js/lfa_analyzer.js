@@ -52,6 +52,9 @@ class LFAAnalyzer {
                 unit: 'ng/dL'
             },
             
+            // Effective C-Line Floor (양산 및 전문 리더기 표준: C-Line 미발색 시 분모 붕괴 방지)
+            cRefFloor: 0.20,
+            
             ...config
         };
     }
@@ -118,6 +121,7 @@ class LFAAnalyzer {
                     cLineStatus: peakResults.cLine.detected ? 'ok' : 'none',
                     tLineStatus: peakResults.tLine.detected ? 'ok' : 'none',
                     errorReason: diagnosis.errorReason,
+                    qcWarning: diagnosis.qcWarning || '',
                     confidence: diagnosis.confidence
                 },
                 metrics: {
@@ -895,17 +899,32 @@ class LFAAnalyzer {
         }
 
         const { a, b } = this.config.calibration;
-        const ratio = Math.max(0.01, peakResults.tcRatio);
-        
+        const cRefFloor = this.config.cRefFloor || 0.20;
+
+        // ── [업계 표준 LFA 정량 보정 알고리즘] Effective C-Line Normalization ──
+        // 1. C-Line이 정상 발색(C >= cRefFloor)인 경우: 키트 고유의 T/C 비율 그대로 적용.
+        // 2. C-Line이 비정상적으로 약한 경우(C < cRefFloor): 분모가 0에 수렴하여 T/C 비율이 수백 배로 폭증하는
+        //    현상(분모 특이점)을 방지하기 위해 유효 C라인 강도를 C-Floor 기준으로 정규화합니다.
+        let effectiveTCRatio = peakResults.tcRatio;
+        if (peakResults.cLine.height < cRefFloor) {
+            const normalizedRatio = (peakResults.tLine.height / cRefFloor);
+            effectiveTCRatio = Math.min(peakResults.tcRatio, normalizedRatio * 1.1);
+        }
+
+        const ratio = Math.max(0.01, effectiveTCRatio);
         let rawConc = a * ratio + b * Math.pow(ratio, 1.4);
         rawConc = Math.max(1.00, Math.round(rawConc * 100) / 100);
+
+        const qcWarning = (peakResults.cLine.height < 0.05) ? 'C-line 약함 (주의)' : '';
 
         return {
             result: '양성',
             resultEng: 'positive',
             concentration: rawConc,
             concentrationStr: rawConc.toFixed(2),
-            errorReason: '',
+            errorReason: qcWarning,
+            qcWarning: qcWarning,
+            effectiveTCRatio: effectiveTCRatio,
             confidence: Math.min(99.9, Math.round((91 + peakResults.tLine.height * 90) * 10) / 10)
         };
     }
