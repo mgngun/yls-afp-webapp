@@ -1136,9 +1136,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (res && res.success) {
                     if (Array.isArray(res.data) && res.data.length > 0) {
                         // 서버 응답에서 혹시 다른 사용자 데이터가 섞이지 않도록 클라이언트에서도 재확인
-                        const filtered = res.data.filter(r =>
-                            !r.userNickname || r.userNickname === currentUser
-                        );
+                        const filtered = res.data
+                            .filter(r => !r.userNickname || r.userNickname === currentUser)
+                            .map(r => {
+                                // 구버전 0.01 등 100배 이전 데이터 자동 보정
+                                if ((r.result === '양성' || r.result === 'positive') && r.concentrationStr && r.concentrationStr !== '-') {
+                                    const num = parseFloat(r.concentrationStr);
+                                    if (!isNaN(num) && num < 0.1 && num > 0) {
+                                        r.concentrationStr = (num * 100).toFixed(2);
+                                        r.concentration = num * 100;
+                                    }
+                                }
+                                return r;
+                            });
                         const sorted = sortHistoryByDateDesc(filtered);
                         localStorage.setItem('yls_lfa_history', JSON.stringify(sorted));
                     } else if (Array.isArray(res.data) && res.data.length === 0) {
@@ -1147,9 +1157,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     if (Array.isArray(res.trash)) {
                         // 휴지통도 현재 사용자 것만 필터링
-                        const filteredTrash = res.trash.filter(r =>
-                            !r.userNickname || r.userNickname === currentUser
-                        );
+                        const filteredTrash = res.trash
+                            .filter(r => !r.userNickname || r.userNickname === currentUser)
+                            .map(r => {
+                                if ((r.result === '양성' || r.result === 'positive') && r.concentrationStr && r.concentrationStr !== '-') {
+                                    const num = parseFloat(r.concentrationStr);
+                                    if (!isNaN(num) && num < 0.1 && num > 0) {
+                                        r.concentrationStr = (num * 100).toFixed(2);
+                                        r.concentration = num * 100;
+                                    }
+                                }
+                                return r;
+                            });
                         localStorage.setItem('yls_lfa_trash', JSON.stringify(filteredTrash));
                         updateTrashBadge();
                     }
@@ -2171,8 +2190,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (analysisRes && analysisRes.visualData) {
                                 const vd = analysisRes.visualData;
                                 const diag = analysisRes.diagnosis || {};
-                                const newResult = diag.result || '실패';
                                 const oldResult = record.result;
+                                const oldConc = record.concentrationStr;
+                                const newResult = diag.result || '실패';
+                                const newConc = (newResult === '양성') ? (diag.concentrationStr || '1.00') : '-';
 
                                 updateResultBadge(newResult);
 
@@ -2189,9 +2210,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 record.confidence = diag.confidence;
 
                                 record.result = newResult;
-                                if (diag.concentrationStr) {
-                                    record.concentrationStr = diag.concentrationStr;
-                                }
+                                record.concentrationStr = newConc;
 
                                 drawAbsorbanceGraph(record);
                                 const m = record.metrics || {};
@@ -2214,8 +2233,14 @@ document.addEventListener('DOMContentLoaded', () => {
                                     renderResultsTable();
                                 }
 
-                                if (oldResult !== newResult && state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
-                                    showToast(`판정 변경 (${oldResult} ➔ ${newResult}): 서버 동기화 중...`);
+                                const isResultChanged = (oldResult !== newResult);
+                                const isConcChanged = (oldConc !== newConc && newConc !== '-');
+
+                                if ((isResultChanged || isConcChanged) && state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
+                                    const changeDesc = isResultChanged
+                                        ? `판정 변경 (${oldResult} ➔ ${newResult})`
+                                        : `농도 갱신 (${oldConc} ➔ ${newConc} ng/dL)`;
+                                    showToast(`${changeDesc}: 서버 동기화 중...`);
                                     const base64Data = (record.cropImageDataUrl && record.cropImageDataUrl.startsWith('data:image/'))
                                         ? record.cropImageDataUrl : '';
                                     state.sheetsSync.syncResult(
@@ -2230,8 +2255,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                             driveFileId: record.driveFileId || null
                                         }
                                     ).then(() => {
-                                        console.log(`[ServerSync] 레코드(${record.id}) 업데이트 성공: ${oldResult} -> ${newResult}`);
-                                        showToast(`서버에 '${newResult}' 판정으로 업데이트 완료되었습니다.`);
+                                        console.log(`[ServerSync] 레코드(${record.id}) 업데이트 성공: ${oldResult}/${oldConc} -> ${newResult}/${newConc}`);
+                                        showToast(`서버에 '${newConc} ng/dL'로 업데이트 완료되었습니다.`);
                                     }).catch(err => {
                                         console.warn('Server update sync error:', err);
                                         showToast('서버 업데이트 전송 실패');

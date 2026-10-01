@@ -501,10 +501,21 @@ function extractRowData(row, cropForm, richText, folder, isTrash) {
   if (resultRaw === "positive" || resultRaw === "양성") resultKorean = "양성";
   else if (resultRaw === "negative" || resultRaw === "음성") resultKorean = "음성";
 
-  // 농도값 문자열
+  // 농도값 문자열 (구버전 0.01 등 100배 이전 데이터 자동 스케일링)
   var concStr = "-";
   if (resultKorean === "양성") {
-    concStr = (valRaw !== "" && valRaw !== null && valRaw !== undefined && valRaw !== "-") ? String(valRaw) : "1.00";
+    if (valRaw !== "" && valRaw !== null && valRaw !== undefined && valRaw !== "-") {
+      var numVal = parseFloat(valRaw);
+      if (!isNaN(numVal) && numVal < 0.1 && numVal > 0) {
+        concStr = (numVal * 100).toFixed(2);
+      } else if (!isNaN(numVal)) {
+        concStr = numVal.toFixed(2);
+      } else {
+        concStr = String(valRaw);
+      }
+    } else {
+      concStr = "1.00";
+    }
   }
 
   // ── 이미지 URL 및 Drive File ID 다중 추출 ──
