@@ -2137,15 +2137,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const sc = el.graphStripCanvas;
         if (sc) {
-            sc.width = 76;
-            sc.height = 220;
+            sc.width = 72;
+            sc.height = 190;
             const ctx = sc.getContext('2d');
             ctx.fillStyle = '#f1f5f9';
-            ctx.fillRect(0, 0, 76, 220);
+            ctx.fillRect(0, 0, 72, 190);
             ctx.fillStyle = '#64748b';
             ctx.font = '10px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText('로딩 중...', 38, 110);
+            ctx.fillText('로딩 중...', 36, 95);
 
             let targetFileId = '';
             const rawIdOrUrl = record.driveFileId || record.cropUrl || '';
@@ -2356,7 +2356,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const canvas = el.graphProfile;
         if (!canvas) return;
 
-        const W = 300, H = 220;
+        const W = 220, H = 170;
         canvas.width = W;
         canvas.height = H;
         const ctx = canvas.getContext('2d');
@@ -2373,7 +2373,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const pL = 28, pR = 10, pT = 20, pB = 22;
+        const pL = 28, pR = 10, pT = 22, pB = 24;
         const pW = W - pL - pR;
         const pH = H - pT - pB;
         const profile = pd.corrected;
