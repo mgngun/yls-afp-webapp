@@ -773,4 +773,3 @@ function cleanupDuplicateRows() {
 
   Logger.log("총 " + rowsToDelete.length + "개의 중복 행이 정리되었습니다.");
 }
-
