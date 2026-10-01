@@ -2241,16 +2241,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                     renderResultsTable();
                                 }
 
-                                const isResultChanged = (oldResult !== newResult);
-                                const isConcChanged = (oldConc !== newConc && newConc !== '-');
+                                const base64Data = (record.cropImageDataUrl && record.cropImageDataUrl.startsWith('data:image/'))
+                                    ? record.cropImageDataUrl : '';
 
-                                if ((isResultChanged || isConcChanged) && state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
-                                    const changeDesc = isResultChanged
-                                        ? `판정 변경 (${oldResult} ➔ ${newResult})`
-                                        : `농도 갱신 (${oldConc} ➔ ${newConc} ng/dL)`;
-                                    showToast(`${changeDesc}: 서버 동기화 중...`);
-                                    const base64Data = (record.cropImageDataUrl && record.cropImageDataUrl.startsWith('data:image/'))
-                                        ? record.cropImageDataUrl : '';
+                                if (state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
                                     state.sheetsSync.syncResult(
                                         analysisRes,
                                         state.currentUser,
@@ -2263,11 +2257,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                             driveFileId: record.driveFileId || null
                                         }
                                     ).then(() => {
-                                        console.log(`[ServerSync] 레코드(${record.id}) 업데이트 성공: ${oldResult}/${oldConc} -> ${newResult}/${newConc}`);
-                                        showToast(`서버에 '${newConc} ng/dL'로 업데이트 완료되었습니다.`);
+                                        console.log(`[ServerSync] 레코드(${record.id}) 서버 동기화 성공: ${newResult} / ${newConc}`);
+                                        showToast(`서버에 농도 '${newConc} ng/dL'로 동기화 완료되었습니다.`);
                                     }).catch(err => {
                                         console.warn('Server update sync error:', err);
-                                        showToast('서버 업데이트 전송 실패');
                                     });
                                 }
                             }

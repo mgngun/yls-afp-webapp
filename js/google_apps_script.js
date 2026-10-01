@@ -406,7 +406,18 @@ function doPost(e) {
       sheet.getRange(targetRow, 5).setValue(result || "negative");
       // 양성이면 농도값 기록, 음성/실패 시 이전 농도값 클리어
       var isPositive = (result === "positive" || result === "양성");
-      sheet.getRange(targetRow, 6).setValue(isPositive ? ((value !== "" && value !== null && value !== undefined) ? value : "1.00") : "");
+      var valToSave = "";
+      if (isPositive) {
+        var numV = parseFloat(value);
+        if (!isNaN(numV) && numV < 0.1 && numV > 0) {
+          valToSave = (numV * 100).toFixed(2);
+        } else if (!isNaN(numV)) {
+          valToSave = numV.toFixed(2);
+        } else {
+          valToSave = (value !== "" && value !== null && value !== undefined) ? String(value) : "1.00";
+        }
+      }
+      sheet.getRange(targetRow, 6).setValue(valToSave);
       sheet.getRange(targetRow, 7).setValue(errorMsg || "");
       if (data.Memo !== undefined || data.memo !== undefined) {
         sheet.getRange(targetRow, 8).setValue(memo);
@@ -421,7 +432,17 @@ function doPost(e) {
     } else {
       // [신규 행 추가]
       var isPos = (result === "positive" || result === "양성");
-      var valToSave = isPos ? ((value !== "" && value !== null && value !== undefined) ? value : "1.00") : "";
+      var valToSave = "";
+      if (isPos) {
+        var numV = parseFloat(value);
+        if (!isNaN(numV) && numV < 0.1 && numV > 0) {
+          valToSave = (numV * 100).toFixed(2);
+        } else if (!isNaN(numV)) {
+          valToSave = numV.toFixed(2);
+        } else {
+          valToSave = (value !== "" && value !== null && value !== undefined) ? String(value) : "1.00";
+        }
+      }
       var newRow = [
         timestamp,
         userId,
@@ -784,3 +805,48 @@ function cleanupDuplicateRows() {
 
   Logger.log("총 " + rowsToDelete.length + "개의 중복 행이 정리되었습니다.");
 }
+
+/**
+ * [편의 도구] 구글 시트에 기존에 저장된 과거 0.01 농도값들을 1.00으로 일괄 100배 변환해주는 마이그레이션 함수
+ * 스프레드시트 상단 함수 목록에서 'migrateOldConcentrationValues' 선택 후 [실행]을 누르면,
+ * Main 시트 및 Trash 시트에 이미 기록된 모든 과거 양성 행들의 농도(value)가 100배(예: 0.01 -> 1.00)로 일괄 영구 수정됩니다.
+ */
+function migrateOldConcentrationValues() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetsToUpdate = [getMainSheet(ss), ss.getSheetByName("Trash")];
+  var totalUpdated = 0;
+
+  sheetsToUpdate.forEach(function(sh) {
+    if (!sh) return;
+    var lastRow = sh.getLastRow();
+    if (lastRow <= 1) return;
+
+    // 5열(result), 6열(value) 데이터 읽기
+    var range = sh.getRange(2, 5, lastRow - 1, 2);
+    var values = range.getValues();
+    var modified = false;
+
+    for (var i = 0; i < values.length; i++) {
+      var res = String(values[i][0] || "").toLowerCase().trim();
+      var val = values[i][1];
+
+      // 양성인 행이고 농도값이 존재하는 경우
+      if (res === "positive" || res === "양성") {
+        var num = parseFloat(val);
+        if (!isNaN(num) && num > 0 && num < 0.1) {
+          // 0.01 -> 1.00, 0.02 -> 2.00 으로 100배 변환
+          values[i][1] = (num * 100).toFixed(2);
+          modified = true;
+          totalUpdated++;
+        }
+      }
+    }
+
+    if (modified) {
+      range.setValues(values);
+    }
+  });
+
+  Logger.log("총 " + totalUpdated + "개의 과거 농도값이 100배로 일괄 변환(1.00 ng/dL)되었습니다.");
+}
+
