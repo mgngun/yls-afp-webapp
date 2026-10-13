@@ -313,21 +313,29 @@
                         <canvas id="graph-profile-canvas" class="graph-profile-canvas"></canvas>
                     </div>
                     <div class="graph-metrics-grid">
-                        <div class="graph-metric-item">
-                            <span class="graph-metric-label">T-Line 강도</span>
-                            <span id="metric-t-intensity" class="graph-metric-value t-value">-</span>
+                        <div class="graph-metrics-row row-top">
+                            <div class="graph-metric-item">
+                                <span class="graph-metric-label">T-Line 강도</span>
+                                <span id="metric-t-intensity" class="graph-metric-value t-value">-</span>
+                            </div>
+                            <div class="graph-metric-item">
+                                <span class="graph-metric-label">C-Line 강도</span>
+                                <span id="metric-c-intensity" class="graph-metric-value c-value">-</span>
+                            </div>
+                            <div class="graph-metric-item">
+                                <span class="graph-metric-label">T/C</span>
+                                <span id="metric-tc-ratio" class="graph-metric-value tc-value">-</span>
+                            </div>
                         </div>
-                        <div class="graph-metric-item">
-                            <span class="graph-metric-label">C-Line 강도</span>
-                            <span id="metric-c-intensity" class="graph-metric-value c-value">-</span>
-                        </div>
-                        <div class="graph-metric-item">
-                            <span class="graph-metric-label">분석신뢰도</span>
-                            <span id="metric-confidence" class="graph-metric-value">-</span>
-                        </div>
-                        <div class="graph-metric-item">
-                            <span class="graph-metric-label">신호대잡음비</span>
-                            <span id="metric-snr" class="graph-metric-value">-</span>
+                        <div class="graph-metrics-row row-bottom">
+                            <div class="graph-metric-item">
+                                <span class="graph-metric-label">분석신뢰도</span>
+                                <span id="metric-confidence" class="graph-metric-value">-</span>
+                            </div>
+                            <div class="graph-metric-item">
+                                <span class="graph-metric-label">신호대잡음비</span>
+                                <span id="metric-snr" class="graph-metric-value">-</span>
+                            </div>
                         </div>
                     </div>
                 </div>
