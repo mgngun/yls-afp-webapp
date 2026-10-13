@@ -112,10 +112,10 @@ class LFAAnalyzer {
             const tHeight = peakResults.tLine.height;
             const cDetected = peakResults.cLine.detected;
             const tDetected = peakResults.tLine.detected;
-            const cValStr = (cDetected && cHeight != null && cHeight > 0) ? cHeight.toFixed(3) : '0';
-            const tValStr = (tDetected && tHeight != null && tHeight > 0) ? tHeight.toFixed(3) : '0';
+            const cValStr = (cDetected && cHeight != null && cHeight > 0) ? cHeight.toFixed(3) : '0.000';
+            const tValStr = (tDetected && tHeight != null && tHeight > 0) ? tHeight.toFixed(3) : '0.000';
             const tcValStr = (cDetected && cHeight != null && cHeight > 0)
-                ? (tDetected && tHeight != null ? (tHeight / cHeight).toFixed(3) : '0.000')
+                ? (tDetected && tHeight != null && tHeight >= 0 ? (tHeight / cHeight).toFixed(5) : '0.00000')
                 : '#DIV/0!';
 
             return {

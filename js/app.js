@@ -1093,10 +1093,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const cHeight = analysis.metrics?.cPeakHeight;
         const tHeight = analysis.metrics?.tPeakHeight;
 
-        const cLineVal = (cDetected && cHeight != null && cHeight > 0) ? cHeight.toFixed(3) : '0';
-        const tLineVal = (tDetected && tHeight != null && tHeight > 0) ? tHeight.toFixed(3) : '0';
+        const cLineVal = (cDetected && cHeight != null && cHeight > 0) ? cHeight.toFixed(3) : '0.000';
+        const tLineVal = (tDetected && tHeight != null && tHeight > 0) ? tHeight.toFixed(3) : '0.000';
         const tcVal = (cDetected && cHeight != null && cHeight > 0)
-            ? (tDetected && tHeight != null ? (tHeight / cHeight).toFixed(3) : '0.000')
+            ? (tDetected && tHeight != null && tHeight >= 0 ? (tHeight / cHeight).toFixed(5) : '0.00000')
             : '#DIV/0!';
 
         const record = {
@@ -1111,8 +1111,8 @@ document.addEventListener('DOMContentLoaded', () => {
             profileData,
             metrics: analysis.metrics || null,
             confidence: diag.confidence || null,
-            cLine: cLineVal,
             tLine: tLineVal,
+            cLine: cLineVal,
             tcRatio: tcVal
         };
 
@@ -1974,27 +1974,31 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const headers = ['timestamp', 'User_ID', 'C_line', 'T_line', 'T/C', 'result', 'value', 'error', 'Memo', 'Crop_image'];
+        const headers = ['timestamp', 'User_ID', 'T_line', 'C_line', 'T/C', 'result', 'value', 'error', 'Memo', 'Crop_image'];
         const rows = filtered.map(r => {
-            const cLineStr = (r.cLine !== undefined && r.cLine !== null && r.cLine !== '') ? String(r.cLine) : (r.cLineDetected ? '1.000' : '0');
-            const tLineStr = (r.tLine !== undefined && r.tLine !== null && r.tLine !== '') ? String(r.tLine) : (r.tLineDetected ? '1.000' : '0');
+            function formatDec3(val, defaultVal = '0.000') {
+                if (val === undefined || val === null || val === '' || val === '-') return defaultVal;
+                const n = parseFloat(val);
+                return !isNaN(n) ? n.toFixed(3) : String(val);
+            }
+            const tLineStr = formatDec3(r.tLine, r.tLineDetected ? '1.000' : '0.000');
+            const cLineStr = formatDec3(r.cLine, r.cLineDetected ? '1.000' : '0.000');
             let tcStr = r.tcRatio || r.tcRatioStr || '';
-            if (!tcStr) {
-                const cNum = parseFloat(cLineStr);
-                const tNum = parseFloat(tLineStr);
-                if (!isNaN(cNum) && cNum > 0) {
-                    tcStr = (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : '0.000');
-                } else {
-                    tcStr = '#DIV/0!';
-                }
-            } else if (cLineStr === '0' || parseFloat(cLineStr) === 0) {
+            const cNum = parseFloat(cLineStr);
+            const tNum = parseFloat(tLineStr);
+            if (isNaN(cNum) || cNum === 0 || Math.abs(cNum) < 1e-6) {
                 tcStr = '#DIV/0!';
+            } else if (!tcStr || tcStr === '-' || tcStr === '#DIV/0!') {
+                tcStr = (!isNaN(tNum) && tNum >= 0 ? (tNum / cNum).toFixed(5) : '0.00000');
+            } else {
+                const parsed = parseFloat(tcStr);
+                if (!isNaN(parsed)) tcStr = parsed.toFixed(5);
             }
             return [
                 `"${r.timestamp || ''}"`,
                 `"${r.userNickname || r.User_ID || state.currentUser.username || ''}"`,
-                `"${cLineStr}"`,
                 `"${tLineStr}"`,
+                `"${cLineStr}"`,
                 `"${tcStr}"`,
                 `"${r.resultEnglish || (r.result === '양성' ? 'positive' : r.result === '음성' ? 'negative' : 'fail')}"`,
                 `"${r.concentrationStr && r.concentrationStr !== '-' ? r.concentrationStr : (r.result === '양성' ? '1.00' : '')}"`,
@@ -2257,10 +2261,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const reCDetected = vd.cLineDetected;
                                 const reTDetected = vd.tLineDetected;
 
-                                record.cLine = (reCDetected && reCHeight != null && reCHeight > 0) ? reCHeight.toFixed(3) : '0';
-                                record.tLine = (reTDetected && reTHeight != null && reTHeight > 0) ? reTHeight.toFixed(3) : '0';
+                                record.cLine = (reCDetected && reCHeight != null && reCHeight > 0) ? reCHeight.toFixed(3) : '0.000';
+                                record.tLine = (reTDetected && reTHeight != null && reTHeight > 0) ? reTHeight.toFixed(3) : '0.000';
                                 record.tcRatio = (reCDetected && reCHeight != null && reCHeight > 0)
-                                    ? (reTDetected && reTHeight != null ? (reTHeight / reCHeight).toFixed(3) : '0.000')
+                                    ? (reTDetected && reTHeight != null && reTHeight >= 0 ? (reTHeight / reCHeight).toFixed(5) : '0.00000')
                                     : '#DIV/0!';
 
                                 drawAbsorbanceGraph(record);
@@ -2336,10 +2340,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const tVal = m.tPeakHeight != null ? m.tPeakHeight : (record.tLine !== undefined && !isNaN(parseFloat(record.tLine)) ? parseFloat(record.tLine) : null);
         const cVal = m.cPeakHeight != null ? m.cPeakHeight : (record.cLine !== undefined && !isNaN(parseFloat(record.cLine)) ? parseFloat(record.cLine) : null);
 
-        setText(el.metricT, tVal != null ? (typeof tVal === 'number' ? tVal.toFixed(3) : tVal) : '-');
-        setText(el.metricC, cVal != null ? (typeof cVal === 'number' ? cVal.toFixed(3) : cVal) : '-');
+        function formatIntensityVal(v) {
+            if (v == null || v === '' || v === '-') return '-';
+            const num = (typeof v === 'number') ? v : parseFloat(v);
+            return isNaN(num) ? String(v) : num.toFixed(3);
+        }
+
+        setText(el.metricT, formatIntensityVal(tVal));
+        setText(el.metricC, formatIntensityVal(cVal));
         const calculatedTc = formatTCRatio(tVal, cVal);
-        setText(el.metricTc, calculatedTc !== '-' ? calculatedTc : (record.tcRatio || '-'));
+        let displayTc = calculatedTc;
+        if (displayTc === '-' && record.tcRatio) {
+            const parsed = parseFloat(record.tcRatio);
+            displayTc = (!isNaN(parsed)) ? parsed.toFixed(5) : record.tcRatio;
+        }
+        setText(el.metricTc, displayTc !== '-' ? displayTc : '-');
         setText(el.metricConf, conf != null ? (typeof conf === 'number' ? conf.toFixed(1) + '%' : conf) : '-');
         setText(el.metricSnr, m.signalToNoise != null ? m.signalToNoise.toFixed(1) + ' dB' : '-');
     }
@@ -2403,7 +2418,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ? (typeof tIntensity === 'number' ? tIntensity : parseFloat(tIntensity))
             : 0;
         const validT = isNaN(tNum) ? 0 : tNum;
-        return (validT / cNum).toFixed(3);
+        return (validT / cNum).toFixed(5);
     }
 
     function setText(node, text) { if (node) node.textContent = text; }

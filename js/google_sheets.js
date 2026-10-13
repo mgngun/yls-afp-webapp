@@ -132,16 +132,17 @@ class GoogleSheetsSync {
         if (tHeight === null && diag.tLineStatus && !isNaN(parseFloat(diag.tLineStatus))) tHeight = parseFloat(diag.tLineStatus);
 
         // 4. 구글시트의 'C_line' 열: 선이 있으면 C-Line 강도 값, 없으면 '0'
-        const cLineVal = (cDetected && cHeight != null && cHeight > 0) ? (typeof cHeight === 'number' ? cHeight.toFixed(3) : String(cHeight)) : '0';
-        // 5. 구글시트의 'T_line' 열: 선이 있으면 T-Line 강도 값, 없으면 '0'
-        const tLineVal = (tDetected && tHeight != null && tHeight > 0) ? (typeof tHeight === 'number' ? tHeight.toFixed(3) : String(tHeight)) : '0';
+        // 4. 구글시트의 'C_line' 열: 선이 있으면 C-Line 강도 값(소수점 3자리), 없으면 '0.000'
+        const cLineVal = (cDetected && cHeight != null && cHeight > 0) ? (typeof cHeight === 'number' ? cHeight.toFixed(3) : String(cHeight)) : '0.000';
+        // 5. 구글시트의 'T_line' 열: 선이 있으면 T-Line 강도 값(소수점 3자리), 없으면 '0.000'
+        const tLineVal = (tDetected && tHeight != null && tHeight > 0) ? (typeof tHeight === 'number' ? tHeight.toFixed(3) : String(tHeight)) : '0.000';
 
-        // 6. T/C 값 (단, C값이 0이면 '#DIV/0!' 으로 표기)
+        // 6. T/C 값: 소수점 5자리 (단, C값이 0이면 '#DIV/0!' 으로 표기)
         let tcVal = '#DIV/0!';
         const cNum = parseFloat(cLineVal);
         const tNum = parseFloat(tLineVal);
         if (!isNaN(cNum) && cNum > 0) {
-            tcVal = (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : '0.000');
+            tcVal = (!isNaN(tNum) && tNum >= 0 ? (tNum / cNum).toFixed(5) : '0.00000');
         } else {
             tcVal = '#DIV/0!';
         }
@@ -149,13 +150,13 @@ class GoogleSheetsSync {
         return this.recordResult({
             timestamp:         customTimestamp || this.formatTimestamp(new Date()),
             userId:            user.username || user.nickname || user.id || 'guest',
-            cLineStatus:       cLineVal,
             tLineStatus:       tLineVal,
-            cLine:             cLineVal,
+            cLineStatus:       cLineVal,
             tLine:             tLineVal,
+            cLine:             cLineVal,
             tcRatio:           tcVal,
-            cLineDetected:     cDetected,
             tLineDetected:     tDetected,
+            cLineDetected:     cDetected,
             result:            diag.result,
             resultEnglish:     diag.resultEnglish,
             concentration:     diag.concentration,
@@ -170,47 +171,48 @@ class GoogleSheetsSync {
 
     /**
      * Records a diagnostic test result.
-     * Google Sheets columns (T/C ratio included):
-     * timestamp | User_ID | C_line | T_line | T/C | result | value | error | Memo | Crop_image
+     * Google Sheets columns (T/C ratio included, T_line then C_line):
+     * timestamp | User_ID | T_line | C_line | T/C | result | value | error | Memo | Crop_image
      * Sheet: https://docs.google.com/spreadsheets/d/1ckyAywMytLJCClUgwizQakq5xdQmm_5fNeQYSW4S3jo
      */
     async recordResult(record) {
-        let cLine = '0';
-        if (record.cLine !== undefined) {
-            cLine = String(record.cLine);
-        } else if (record.cLineStatus !== undefined) {
-            cLine = (record.cLineStatus === 'none' || record.cLineStatus === '0') ? '0' : String(record.cLineStatus);
-        } else if (record.cLineDetected) {
-            cLine = '1.000';
+        function formatDec3(val, isDetected) {
+            if (val !== undefined && val !== null && val !== '' && val !== 'none') {
+                if (val === 'ok') return '1.000';
+                const n = parseFloat(val);
+                return !isNaN(n) ? n.toFixed(3) : String(val);
+            }
+            return isDetected ? '1.000' : '0.000';
         }
 
-        let tLine = '0';
-        if (record.tLine !== undefined) {
-            tLine = String(record.tLine);
-        } else if (record.tLineStatus !== undefined) {
-            tLine = (record.tLineStatus === 'none' || record.tLineStatus === '0') ? '0' : String(record.tLineStatus);
-        } else if (record.tLineDetected) {
-            tLine = '1.000';
-        }
+        const tLine = formatDec3(
+            record.tLine !== undefined ? record.tLine : record.tLineStatus,
+            record.tLineDetected
+        );
+        const cLine = formatDec3(
+            record.cLine !== undefined ? record.cLine : record.cLineStatus,
+            record.cLineDetected
+        );
 
         let tcRatio = record.tcRatio;
-        if (!tcRatio) {
-            const cNum = parseFloat(cLine);
-            const tNum = parseFloat(tLine);
-            if (!isNaN(cNum) && cNum > 0) {
-                tcRatio = (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : '0.000');
-            } else {
-                tcRatio = '#DIV/0!';
-            }
-        } else if (String(cLine).trim() === '0' || parseFloat(cLine) === 0) {
+        const cNum = parseFloat(cLine);
+        const tNum = parseFloat(tLine);
+        if (isNaN(cNum) || cNum === 0 || Math.abs(cNum) < 1e-6) {
             tcRatio = '#DIV/0!';
+        } else if (!tcRatio || tcRatio === '-' || tcRatio === '#DIV/0!') {
+            tcRatio = (!isNaN(tNum) && tNum >= 0 ? (tNum / cNum).toFixed(5) : '0.00000');
+        } else {
+            const parsed = parseFloat(tcRatio);
+            if (!isNaN(parsed)) {
+                tcRatio = parsed.toFixed(5);
+            }
         }
 
         const rowData = {
             timestamp:         record.timestamp || this.formatTimestamp(new Date()),
             User_ID:           record.userId    || 'guest',
-            C_line:            cLine,
             T_line:            tLine,
+            C_line:            cLine,
             'T/C':             tcRatio,
             tcRatio:           tcRatio,
             result:            record.resultEnglish ||
@@ -317,8 +319,9 @@ class GoogleSheetsSync {
                 id: r.id,
                 timestamp: r.timestamp || r.ts,
                 userId: r.userNickname || r.userId || 'yelloi',
-                cLine: r.cLine || 'ok',
-                tLine: r.tLine || (r.result === '양성' ? 'ok' : 'none'),
+                tLine: r.tLine !== undefined ? r.tLine : (r.result === '양성' ? '1.000' : '0.000'),
+                cLine: r.cLine !== undefined ? r.cLine : '1.000',
+                tcRatio: r.tcRatio || '',
                 result: r.resultEnglish || (r.result === '양성' ? 'positive' : r.result === '음성' ? 'negative' : 'fail'),
                 value: r.concentrationStr !== '-' ? r.concentrationStr : '',
                 error: r.error || '',
@@ -412,27 +415,31 @@ class GoogleSheetsSync {
             return;
         }
 
-        const headers = ['timestamp', 'User_ID', 'C_line', 'T_line', 'T/C', 'result', 'value', 'error', 'Memo', 'Crop_image'];
+        const headers = ['timestamp', 'User_ID', 'T_line', 'C_line', 'T/C', 'result', 'value', 'error', 'Memo', 'Crop_image'];
         const rows = queue.map(r => {
-            const cStr = r.C_line !== undefined ? String(r.C_line) : '0';
-            const tStr = r.T_line !== undefined ? String(r.T_line) : '0';
+            function formatDec3(val) {
+                if (val === undefined || val === null || val === '') return '0.000';
+                const n = parseFloat(val);
+                return !isNaN(n) ? n.toFixed(3) : String(val);
+            }
+            const tStr = formatDec3(r.T_line !== undefined ? r.T_line : r.tLine);
+            const cStr = formatDec3(r.C_line !== undefined ? r.C_line : r.cLine);
             let tc = r['T/C'] || r.tcRatio || '';
-            if (!tc) {
-                const cNum = parseFloat(cStr);
-                const tNum = parseFloat(tStr);
-                if (!isNaN(cNum) && cNum > 0) {
-                    tc = (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : '0.000');
-                } else {
-                    tc = '#DIV/0!';
-                }
-            } else if (cStr === '0' || parseFloat(cStr) === 0) {
+            const cNum = parseFloat(cStr);
+            const tNum = parseFloat(tStr);
+            if (isNaN(cNum) || cNum === 0 || Math.abs(cNum) < 1e-6) {
                 tc = '#DIV/0!';
+            } else if (!tc || tc === '-' || tc === '#DIV/0!') {
+                tc = (!isNaN(tNum) && tNum >= 0 ? (tNum / cNum).toFixed(5) : '0.00000');
+            } else {
+                const parsed = parseFloat(tc);
+                if (!isNaN(parsed)) tc = parsed.toFixed(5);
             }
             return [
                 `"${r.timestamp    || ''}"`,
                 `"${r.User_ID      || ''}"`,
-                `"${cStr}"`,
                 `"${tStr}"`,
+                `"${cStr}"`,
                 `"${tc}"`,
                 `"${r.result       || ''}"`,
                 `"${r.value !== undefined ? r.value : ''}"`,

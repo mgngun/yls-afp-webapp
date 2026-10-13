@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * YLS LFA AFP 진단 키트 - Google Apps Script (GAS) 백엔드 코드
- * 구글 시트 저장/수정 + 휴지통 보관 & 7일 자동 영구 삭제 & 복원 지원 (v4.7.4)
+ * 구글 시트 저장/수정 + T_line/C_line 순서 및 소수점 서식(T,C: 3자리, T/C: 5자리) 지원 (v4.7.5)
  * ============================================================================
  * 
  * [설정된 구글 리소스]
@@ -60,7 +60,8 @@ function purgeExpiredTrash(trashSheet) {
   var now = new Date().getTime();
   var SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
   
-  var values = trashSheet.getRange(2, 10, lastRow - 1, 1).getValues();
+  var delCol = lastCol;
+  var values = trashSheet.getRange(2, delCol, lastRow - 1, 1).getValues();
   for (var i = values.length - 1; i >= 0; i--) {
     var rawDel = values[i][0];
     if (rawDel) {
@@ -72,6 +73,67 @@ function purgeExpiredTrash(trashSheet) {
   }
 }
 
+/**
+ * [열 구조 마이그레이션 헬퍼]
+ * 1) 9열 구조일 경우 'T/C' 열을 삽입
+ * 2) 'C_line' 열 다음 'T_line' 열 순서인 경우 -> 'T_line' 열 다음 'C_line'이 오도록 순서 자동 전환
+ * 3) 소수점 서식 자동 설정: T_line(C열), C_line(D열) -> 3자리 (0.000), T/C(E열) -> 5자리 (0.00000)
+ */
+function ensureSheetColumns(targetSheet, isTrash) {
+  if (!targetSheet) return;
+  var lastRow = targetSheet.getLastRow();
+  var lastCol = targetSheet.getLastColumn();
+  if (lastRow === 0) {
+    if (isTrash) {
+      targetSheet.appendRow([
+        "timestamp", "User_ID", "T_line", "C_line", "T/C", "result", "value", "error", "Memo", "Crop_image", "deletedAt"
+      ]);
+      targetSheet.getRange(1, 1, 1, 11).setFontWeight("bold").setBackground("#fee2e2");
+    } else {
+      targetSheet.appendRow([
+        "timestamp", "User_ID", "T_line", "C_line", "T/C", "result", "value", "error", "Memo", "Crop_image"
+      ]);
+      targetSheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#e2e8f0");
+    }
+    return;
+  }
+
+  if (lastCol < 4) return;
+
+  var h3 = String(targetSheet.getRange(1, 3).getValue() || "").trim().toLowerCase();
+  var h4 = String(targetSheet.getRange(1, 4).getValue() || "").trim().toLowerCase();
+  var h5 = String(targetSheet.getRange(1, 5).getValue() || "").trim().toLowerCase();
+
+  // 1) 기존 9열 구조 (col 5가 result)인 경우 5열 앞에 'T/C' 열 삽입
+  if (h5 === "result") {
+    targetSheet.insertColumnBefore(5);
+    targetSheet.getRange(1, 5).setValue("T/C").setFontWeight("bold").setBackground(isTrash ? "#fee2e2" : "#e2e8f0");
+    h5 = "t/c";
+  }
+
+  // 2) col 3이 C_line(또는 c로 시작)이고 col 4가 T_line(또는 t로 시작)인 경우 열 순서 바꾸기 (T_line -> C_line)
+  if (h3.indexOf("c") === 0 && h4.indexOf("t") === 0) {
+    try {
+      targetSheet.moveColumns(targetSheet.getRange("D:D"), 3);
+    } catch (e) {
+      Logger.log("moveColumns warning: " + e.toString());
+    }
+  }
+
+  // 헤더 텍스트 명시적 갱신
+  targetSheet.getRange(1, 3).setValue("T_line");
+  targetSheet.getRange(1, 4).setValue("C_line");
+  targetSheet.getRange(1, 5).setValue("T/C");
+
+  // 서식 지정: T_line(C열), C_line(D열) -> 소수점 3자리(0.000), T/C(E열) -> 소수점 5자리(0.00000)
+  if (lastRow > 1) {
+    try {
+      targetSheet.getRange(2, 3, lastRow - 1, 2).setNumberFormat("0.000");
+      targetSheet.getRange(2, 5, lastRow - 1, 1).setNumberFormat("0.00000");
+    } catch (_) {}
+  }
+}
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   lock.tryLock(30000);
@@ -79,30 +141,7 @@ function doPost(e) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = getMainSheet(ss);
-    
-    // 첫 행(헤더)이 비어있으면 기본 헤더 자동 생성
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow([
-        "timestamp", 
-        "User_ID", 
-        "C_line", 
-        "T_line", 
-        "T/C",
-        "result", 
-        "value", 
-        "error", 
-        "Memo", 
-        "Crop_image"
-      ]);
-      sheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#e2e8f0");
-    } else {
-      // 기존 9열 구조(col 5가 result)인 경우 'T/C' 열 자동 삽입 마이그레이션
-      var h5 = String(sheet.getRange(1, 5).getValue() || "").trim().toLowerCase();
-      if (h5 === "result") {
-        sheet.insertColumnBefore(5);
-        sheet.getRange(1, 5).setValue("T/C").setFontWeight("bold").setBackground("#e2e8f0");
-      }
-    }
+    ensureSheetColumns(sheet, false);
     
     var data = {};
     if (e && e.postData && e.postData.contents) {
@@ -122,17 +161,9 @@ function doPost(e) {
       var trashSheet = ss.getSheetByName("Trash");
       if (!trashSheet) {
         trashSheet = ss.insertSheet("Trash");
-        trashSheet.appendRow([
-          "timestamp", "User_ID", "C_line", "T_line", "T/C", "result", "value", "error", "Memo", "Crop_image", "deletedAt"
-        ]);
-        trashSheet.getRange(1, 1, 1, 11).setFontWeight("bold").setBackground("#fee2e2");
-      } else if (trashSheet.getLastRow() >= 1) {
-        var th5 = String(trashSheet.getRange(1, 5).getValue() || "").trim().toLowerCase();
-        if (th5 === "result") {
-          trashSheet.insertColumnBefore(5);
-          trashSheet.getRange(1, 5).setValue("T/C").setFontWeight("bold").setBackground("#fee2e2");
-        }
       }
+      ensureSheetColumns(sheet, false);
+      ensureSheetColumns(trashSheet, true);
 
       // 7일 만료된 오래된 휴지통 항목 자동 영구 삭제
       purgeExpiredTrash(trashSheet);
@@ -178,14 +209,15 @@ function doPost(e) {
 
             if (hasTc) {
               // Trash 시트에 추가 (10개 열 데이터 + deletedAt)
+              // rowData[2]: T_line, rowData[3]: C_line, rowData[4]: T/C
               trashSheet.appendRow([
                 rowData[0], rowData[1], rowData[2], rowData[3], rowData[4],
                 rowData[5], rowData[6], rowData[7], rowData[8], cropForm || rowData[9], matchDel
               ]);
             } else {
-              var cNum = parseFloat(rowData[2]);
-              var tNum = parseFloat(rowData[3]);
-              var tc = (!isNaN(cNum) && cNum > 0) ? (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : "0.000") : "#DIV/0!";
+              var tNum = parseFloat(rowData[2]);
+              var cNum = parseFloat(rowData[3]);
+              var tc = (!isNaN(cNum) && cNum > 0) ? (!isNaN(tNum) && tNum >= 0 ? (tNum / cNum).toFixed(5) : "0.00000") : "#DIV/0!";
               trashSheet.appendRow([
                 rowData[0], rowData[1], rowData[2], rowData[3], tc,
                 rowData[4], rowData[5], rowData[6], rowData[7], cropForm || rowData[8], matchDel
@@ -250,15 +282,15 @@ function doPost(e) {
             var tCrop = (trashFormulas[j] && trashFormulas[j][0]) || tRow[tCropCol - 1];
 
             if (tHasTc) {
-              // 원본 시트에 다시 추가
+              // 원본 시트에 다시 추가: Col 3: T_line, Col 4: C_line, Col 5: T/C
               sheet.appendRow([
                 tRow[0], tRow[1], tRow[2], tRow[3], tRow[4],
                 tRow[5], tRow[6], tRow[7], tRow[8], tCrop
               ]);
             } else {
-              var cNum = parseFloat(tRow[2]);
-              var tNum = parseFloat(tRow[3]);
-              var tc = (!isNaN(cNum) && cNum > 0) ? (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : "0.000") : "#DIV/0!";
+              var tNum = parseFloat(tRow[2]);
+              var cNum = parseFloat(tRow[3]);
+              var tc = (!isNaN(cNum) && cNum > 0) ? (!isNaN(tNum) && tNum >= 0 ? (tNum / cNum).toFixed(5) : "0.00000") : "#DIV/0!";
               sheet.appendRow([
                 tRow[0], tRow[1], tRow[2], tRow[3], tc,
                 tRow[4], tRow[5], tRow[6], tRow[7], tCrop
@@ -316,22 +348,32 @@ function doPost(e) {
     // 1. 기본 필드 추출
     var timestamp   = data.timestamp || Utilities.formatDate(new Date(), "Asia/Seoul", "yyyy-MM-dd HH:mm:ss");
     var userId      = data.User_ID || data.userId || "guest";
-    var cLine       = (data.C_line !== undefined && data.C_line !== null && data.C_line !== "") ? String(data.C_line) : (data.cLine !== undefined ? String(data.cLine) : "0");
-    var tLine       = (data.T_line !== undefined && data.T_line !== null && data.T_line !== "") ? String(data.T_line) : (data.tLine !== undefined ? String(data.tLine) : "0");
-    if (cLine === "ok") cLine = "1.000"; else if (cLine === "none") cLine = "0";
-    if (tLine === "ok") tLine = "1.000"; else if (tLine === "none") tLine = "0";
+
+    function formatIntensityGas(val) {
+      if (val === null || val === undefined || val === "" || val === "none") return "0.000";
+      if (val === "ok") return "1.000";
+      var n = parseFloat(val);
+      return !isNaN(n) ? n.toFixed(3) : String(val);
+    }
+
+    var tLineRaw    = (data.T_line !== undefined && data.T_line !== null && data.T_line !== "") ? data.T_line : (data.tLine !== undefined ? data.tLine : (data.tLineStatus !== undefined ? data.tLineStatus : "0.000"));
+    var cLineRaw    = (data.C_line !== undefined && data.C_line !== null && data.C_line !== "") ? data.C_line : (data.cLine !== undefined ? data.cLine : (data.cLineStatus !== undefined ? data.cLineStatus : "0.000"));
+
+    var tLine       = formatIntensityGas(tLineRaw);
+    var cLine       = formatIntensityGas(cLineRaw);
 
     var tcRatio     = (data["T/C"] !== undefined && data["T/C"] !== null && data["T/C"] !== "") ? String(data["T/C"]) : (data.tcRatio || data.tc_ratio || "");
-    if (!tcRatio) {
-      var cNum = parseFloat(cLine);
-      var tNum = parseFloat(tLine);
-      if (!isNaN(cNum) && cNum > 0) {
-        tcRatio = (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : "0.000");
-      } else {
-        tcRatio = "#DIV/0!";
-      }
-    } else if (cLine === "0" || parseFloat(cLine) === 0) {
+    var cNum = parseFloat(cLine);
+    var tNum = parseFloat(tLine);
+    if (isNaN(cNum) || cNum === 0 || Math.abs(cNum) < 1e-6) {
       tcRatio = "#DIV/0!";
+    } else if (!tcRatio || tcRatio === "-" || tcRatio === "#DIV/0!") {
+      tcRatio = (!isNaN(tNum) && tNum >= 0 ? (tNum / cNum).toFixed(5) : "0.00000");
+    } else {
+      var tcParsed = parseFloat(tcRatio);
+      if (!isNaN(tcParsed)) {
+        tcRatio = tcParsed.toFixed(5);
+      }
     }
 
     var result      = data.result || "negative";
@@ -454,10 +496,10 @@ function doPost(e) {
 
     var isUpdated = false;
     if (targetRow > 0) {
-      // [기존 행 덮어쓰기 업데이트]
+      // [기존 행 덮어쓰기 업데이트] Col 3: T_line, Col 4: C_line, Col 5: T/C
       isUpdated = true;
-      sheet.getRange(targetRow, 3).setValue(cLine);
-      sheet.getRange(targetRow, 4).setValue(tLine);
+      sheet.getRange(targetRow, 3).setValue(tLine);
+      sheet.getRange(targetRow, 4).setValue(cLine);
       sheet.getRange(targetRow, 5).setValue(tcRatio);
       sheet.getRange(targetRow, 6).setValue(result || "negative");
       // 양성이면 농도값 기록, 음성/실패 시 이전 농도값 클리어
@@ -486,7 +528,7 @@ function doPost(e) {
         cropCell.setFormula(formula);
       }
     } else {
-      // [신규 행 추가]
+      // [신규 행 추가] Col 3: T_line, Col 4: C_line, Col 5: T/C
       var isPos = (result === "positive" || result === "양성");
       var valToSave = "";
       if (isPos) {
@@ -502,8 +544,8 @@ function doPost(e) {
       var newRow = [
         timestamp,
         userId,
-        cLine,
         tLine,
+        cLine,
         tcRatio,
         result || "negative",
         valToSave,
@@ -551,9 +593,10 @@ function doPost(e) {
 function extractRowData(row, cropForm, richText, folder, isTrash) {
   var rawTs     = row[0];
   var userId    = String(row[1] || "").trim();
-  var cLine     = String(row[2] || "").trim();
-  var tLine     = String(row[3] || "").trim();
+  var tLine     = String(row[2] !== undefined && row[2] !== null ? row[2] : "").trim();
+  var cLine     = String(row[3] !== undefined && row[3] !== null ? row[3] : "").trim();
 
+  var cropFormula = String(cropForm || "").trim();
   var tcRatio   = "";
   var resultRaw = "";
   var valRaw    = "";
@@ -564,7 +607,7 @@ function extractRowData(row, cropForm, richText, folder, isTrash) {
 
   // 구버전 9열 구조(col 5가 result)인지, 신규 10열 구조(col 5가 T/C, col 6이 result)인지 구분
   var col4Val = String(row[4] || "").trim().toLowerCase();
-  var isOld9Col = (col4Val === "positive" || col4Val === "negative" || col4Val === "fail" || col4Val === "양성" || col4Val === "음성" || col4Val === "실패");
+  var isOld9Col = (row.length < 10) || (col4Val === "positive" || col4Val === "negative" || col4Val === "fail" || col4Val === "양성" || col4Val === "음성" || col4Val === "실패");
 
   if (isOld9Col) {
     resultRaw    = String(row[4] || "").trim();
@@ -577,9 +620,9 @@ function extractRowData(row, cropForm, richText, folder, isTrash) {
     var cNum = parseFloat(cLine);
     var tNum = parseFloat(tLine);
     if (!isNaN(cNum) && cNum > 0) {
-      tcRatio = (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : "0.000");
+      tcRatio = (!isNaN(tNum) && tNum >= 0 ? (tNum / cNum).toFixed(5) : "0.00000");
     } else {
-      tcRatio = (cLine === "0" || cLine === "none") ? "#DIV/0!" : "-";
+      tcRatio = (cLine === "0" || cLine === "0.000" || cLine === "none" || cNum === 0) ? "#DIV/0!" : "-";
     }
   } else {
     tcRatio      = String(row[4] !== undefined && row[4] !== null ? row[4] : "").trim();
@@ -589,6 +632,29 @@ function extractRowData(row, cropForm, richText, folder, isTrash) {
     memoStr      = String(row[8] || "").trim();
     cropVal      = String(row[9] || "").trim();
     deletedAtRaw = isTrash ? row[10] : null;
+
+    if (tcRatio && tcRatio !== "#DIV/0!" && tcRatio !== "-") {
+      var tcNum = parseFloat(tcRatio);
+      if (!isNaN(tcNum)) {
+        tcRatio = tcNum.toFixed(5);
+      }
+    } else if (!tcRatio) {
+      var cNum = parseFloat(cLine);
+      var tNum = parseFloat(tLine);
+      if (!isNaN(cNum) && cNum > 0) {
+        tcRatio = (!isNaN(tNum) && tNum >= 0 ? (tNum / cNum).toFixed(5) : "0.00000");
+      } else {
+        tcRatio = "#DIV/0!";
+      }
+    }
+  }
+
+  // 강도값 소수점 3자리 보정
+  if (tLine !== "" && !isNaN(parseFloat(tLine))) {
+    tLine = parseFloat(tLine).toFixed(3);
+  }
+  if (cLine !== "" && !isNaN(parseFloat(cLine))) {
+    cLine = parseFloat(cLine).toFixed(3);
   }
 
   // 날짜 포맷 표준화 (초 단위 포함)
@@ -674,8 +740,8 @@ function extractRowData(row, cropForm, richText, folder, isTrash) {
                 : ("REC_SHEET_" + (tsFormatted ? tsFormatted.replace(/[- :]/g, "") : ("ROW_" + Math.random().toString(36).substring(2, 7)))),
     timestamp: tsFormatted,
     userNickname: userId,
-    cLine: cLine,
     tLine: tLine,
+    cLine: cLine,
     tcRatio: tcRatio,
     result: resultKorean,
     resultEnglish: resultRaw,
@@ -759,6 +825,7 @@ function doGet(e) {
       var trashSheet = ss.getSheetByName("Trash");
       var trashResults = [];
       if (trashSheet) {
+        ensureSheetColumns(trashSheet, true);
         purgeExpiredTrash(trashSheet);
         var trashLastRow = trashSheet.getLastRow();
         if (trashLastRow > 1) {
@@ -797,6 +864,7 @@ function doGet(e) {
 
       // ── 2) Main 시트 검사 기록 데이터 읽기 ──
       var sheet = getMainSheet(ss);
+      ensureSheetColumns(sheet, false);
       var lastRow = sheet.getLastRow();
       var results = [];
 
@@ -914,21 +982,25 @@ function migrateOldConcentrationValues() {
     var lastRow = sh.getLastRow();
     if (lastRow <= 1) return;
 
-    // 5열(result), 6열(value) 데이터 읽기
-    var range = sh.getRange(2, 5, lastRow - 1, 2);
-    var values = range.getValues();
+    // Col 5가 T/C이면 Col 6이 result, Col 7이 value. 구버전 9열이면 Col 5가 result, Col 6이 value
+    var isNewCol = (sh.getLastColumn() >= 10 || String(sh.getRange(1, 5).getValue() || "").trim().toLowerCase() !== "result");
+    var resCol = isNewCol ? 6 : 5;
+    var valCol = isNewCol ? 7 : 6;
+
+    var resRange = sh.getRange(2, resCol, lastRow - 1, 1).getValues();
+    var valRange = sh.getRange(2, valCol, lastRow - 1, 1);
+    var valValues = valRange.getValues();
     var modified = false;
 
-    for (var i = 0; i < values.length; i++) {
-      var res = String(values[i][0] || "").toLowerCase().trim();
-      var val = values[i][1];
+    for (var i = 0; i < resRange.length; i++) {
+      var res = String(resRange[i][0] || "").toLowerCase().trim();
+      var val = valValues[i][0];
 
       // 양성인 행이고 농도값이 존재하는 경우
       if (res === "positive" || res === "양성") {
         var num = parseFloat(val);
         if (!isNaN(num) && num > 0 && num < 0.1) {
-          // 0.01 -> 1.00, 0.02 -> 2.00 으로 100배 변환
-          values[i][1] = (num * 100).toFixed(2);
+          valValues[i][0] = (num * 100).toFixed(2);
           modified = true;
           totalUpdated++;
         }
@@ -936,10 +1008,23 @@ function migrateOldConcentrationValues() {
     }
 
     if (modified) {
-      range.setValues(values);
+      valRange.setValues(valValues);
     }
   });
 
   Logger.log("총 " + totalUpdated + "개의 과거 농도값이 100배로 일괄 변환(1.00 ng/dL)되었습니다.");
+}
+
+/**
+ * [편의 도구] 스프레드시트 열 순서를 'T_line' 다음 'C_line'으로 일괄 변경하고 서식을 지정하는 수동 마이그레이션 함수
+ * 스프레드시트 상단 함수 목록에서 'migrateColumnsToTLineFirst' 선택 후 [실행]을 누르면,
+ * Main 시트 및 Trash 시트의 'C_line'과 'T_line' 열 순서를 즉시 맞바꾸고 소수점 서식을 자동 적용합니다.
+ */
+function migrateColumnsToTLineFirst() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ensureSheetColumns(getMainSheet(ss), false);
+  var trashSheet = ss.getSheetByName("Trash");
+  if (trashSheet) ensureSheetColumns(trashSheet, true);
+  Logger.log("T_line, C_line 열 순서 및 소수점 서식(T,C: 3자리, T/C: 5자리) 마이그레이션이 완료되었습니다.");
 }
 
