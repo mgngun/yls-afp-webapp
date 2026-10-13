@@ -112,10 +112,11 @@ class LFAAnalyzer {
             const tHeight = peakResults.tLine.height;
             const cDetected = peakResults.cLine.detected;
             const tDetected = peakResults.tLine.detected;
+            // 선이 검출되지 않으면 0(0.000)으로 표기
             const cValStr = (cDetected && cHeight != null && cHeight > 0) ? cHeight.toFixed(3) : '0.000';
             const tValStr = (tDetected && tHeight != null && tHeight > 0) ? tHeight.toFixed(3) : '0.000';
             const tcValStr = (cDetected && cHeight != null && cHeight > 0)
-                ? (tDetected && tHeight != null && tHeight >= 0 ? (tHeight / cHeight).toFixed(5) : '0.00000')
+                ? ((tDetected && tHeight != null && tHeight > 0 ? tHeight : 0) / cHeight).toFixed(5)
                 : '#DIV/0!';
 
             return {

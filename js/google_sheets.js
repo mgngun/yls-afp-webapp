@@ -131,11 +131,14 @@ class GoogleSheetsSync {
         if (tHeight === null && diag.tLine && !isNaN(parseFloat(diag.tLine))) tHeight = parseFloat(diag.tLine);
         if (tHeight === null && diag.tLineStatus && !isNaN(parseFloat(diag.tLineStatus))) tHeight = parseFloat(diag.tLineStatus);
 
-        // 4. 구글시트의 'C_line' 열: 선이 있으면 C-Line 강도 값, 없으면 '0'
-        // 4. 구글시트의 'C_line' 열: 선이 있으면 C-Line 강도 값(소수점 3자리), 없으면 '0.000'
-        const cLineVal = (cDetected && cHeight != null && cHeight > 0) ? (typeof cHeight === 'number' ? cHeight.toFixed(3) : String(cHeight)) : '0.000';
-        // 5. 구글시트의 'T_line' 열: 선이 있으면 T-Line 강도 값(소수점 3자리), 없으면 '0.000'
-        const tLineVal = (tDetected && tHeight != null && tHeight > 0) ? (typeof tHeight === 'number' ? tHeight.toFixed(3) : String(tHeight)) : '0.000';
+        // 4. 구글시트의 'C_line' 열: 선이 검출되면 C-Line 강도 값(소수점 3자리), 검출되지 않으면 '0.000'
+        const toDec3 = (h, detected) => {
+            const n = (typeof h === 'number') ? h : parseFloat(h);
+            return (detected && !isNaN(n) && n > 0) ? n.toFixed(3) : '0.000';
+        };
+        const cLineVal = toDec3(cHeight, cDetected);
+        // 5. 구글시트의 'T_line' 열: 선이 검출되면 T-Line 강도 값(소수점 3자리), 검출되지 않으면 '0.000'
+        const tLineVal = toDec3(tHeight, tDetected);
 
         // 6. T/C 값: 소수점 5자리 (단, C값이 0이면 '#DIV/0!' 으로 표기)
         let tcVal = '#DIV/0!';

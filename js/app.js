@@ -1093,11 +1093,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const cHeight = analysis.metrics?.cPeakHeight;
         const tHeight = analysis.metrics?.tPeakHeight;
 
+        // 선이 검출되지 않으면 휴대폰·서버 모두 0(0.000)으로 표기
         const cLineVal = (cDetected && cHeight != null && cHeight > 0) ? cHeight.toFixed(3) : '0.000';
         const tLineVal = (tDetected && tHeight != null && tHeight > 0) ? tHeight.toFixed(3) : '0.000';
-        const tcVal = (cDetected && cHeight != null && cHeight > 0)
-            ? (tDetected && tHeight != null && tHeight >= 0 ? (tHeight / cHeight).toFixed(5) : '0.00000')
-            : '#DIV/0!';
+        const tcVal = formatTCRatio(tLineVal, cLineVal);
 
         const record = {
             id: 'REC_' + Date.now(),
@@ -2261,17 +2260,16 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const reCDetected = vd.cLineDetected;
                                 const reTDetected = vd.tLineDetected;
 
+                                // 선이 검출되지 않으면 휴대폰·서버 모두 0(0.000)으로 표기
                                 record.cLine = (reCDetected && reCHeight != null && reCHeight > 0) ? reCHeight.toFixed(3) : '0.000';
                                 record.tLine = (reTDetected && reTHeight != null && reTHeight > 0) ? reTHeight.toFixed(3) : '0.000';
-                                record.tcRatio = (reCDetected && reCHeight != null && reCHeight > 0)
-                                    ? (reTDetected && reTHeight != null && reTHeight >= 0 ? (reTHeight / reCHeight).toFixed(5) : '0.00000')
-                                    : '#DIV/0!';
+                                record.tcRatio = formatTCRatio(record.tLine, record.cLine);
 
                                 drawAbsorbanceGraph(record);
                                 const m = record.metrics || {};
-                                setText(el.metricT, m.tPeakHeight != null ? m.tPeakHeight.toFixed(3) : '-');
-                                setText(el.metricC, m.cPeakHeight != null ? m.cPeakHeight.toFixed(3) : '-');
-                                setText(el.metricTc, formatTCRatio(m.tPeakHeight, m.cPeakHeight));
+                                setText(el.metricT, record.tLine);
+                                setText(el.metricC, record.cLine);
+                                setText(el.metricTc, record.tcRatio);
                                 setText(el.metricConf, record.confidence != null ? record.confidence.toFixed(1) + '%' : '-');
                                 setText(el.metricSnr, m.signalToNoise != null ? m.signalToNoise.toFixed(1) + ' dB' : '-');
 
@@ -2337,8 +2335,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const m = record.metrics || {};
         const conf = record.confidence;
 
-        const tVal = m.tPeakHeight != null ? m.tPeakHeight : (record.tLine !== undefined && !isNaN(parseFloat(record.tLine)) ? parseFloat(record.tLine) : null);
-        const cVal = m.cPeakHeight != null ? m.cPeakHeight : (record.cLine !== undefined && !isNaN(parseFloat(record.cLine)) ? parseFloat(record.cLine) : null);
+        // 저장된 값(검출 안됨 = 0.000)을 우선 사용하고, 없으면 검출 여부를 반영해 측정값 사용
+        const pd = record.profileData || {};
+        const pickVal = (stored, height, detected) => {
+            if (stored !== undefined && stored !== null && stored !== '' && !isNaN(parseFloat(stored))) return parseFloat(stored);
+            if (height != null) return (detected === false) ? 0 : height;
+            return null;
+        };
+        const tVal = pickVal(record.tLine, m.tPeakHeight, pd.tLineDetected);
+        const cVal = pickVal(record.cLine, m.cPeakHeight, pd.cLineDetected);
 
         function formatIntensityVal(v) {
             if (v == null || v === '' || v === '-') return '-';
