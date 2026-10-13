@@ -87,13 +87,21 @@ function doPost(e) {
         "User_ID", 
         "C_line", 
         "T_line", 
+        "T/C",
         "result", 
         "value", 
         "error", 
         "Memo", 
         "Crop_image"
       ]);
-      sheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#e2e8f0");
+      sheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#e2e8f0");
+    } else {
+      // 기존 9열 구조(col 5가 result)인 경우 'T/C' 열 자동 삽입 마이그레이션
+      var h5 = String(sheet.getRange(1, 5).getValue() || "").trim().toLowerCase();
+      if (h5 === "result") {
+        sheet.insertColumnBefore(5);
+        sheet.getRange(1, 5).setValue("T/C").setFontWeight("bold").setBackground("#e2e8f0");
+      }
     }
     
     var data = {};
@@ -115,9 +123,15 @@ function doPost(e) {
       if (!trashSheet) {
         trashSheet = ss.insertSheet("Trash");
         trashSheet.appendRow([
-          "timestamp", "User_ID", "C_line", "T_line", "result", "value", "error", "Memo", "Crop_image", "deletedAt"
+          "timestamp", "User_ID", "C_line", "T_line", "T/C", "result", "value", "error", "Memo", "Crop_image", "deletedAt"
         ]);
-        trashSheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#fee2e2");
+        trashSheet.getRange(1, 1, 1, 11).setFontWeight("bold").setBackground("#fee2e2");
+      } else if (trashSheet.getLastRow() >= 1) {
+        var th5 = String(trashSheet.getRange(1, 5).getValue() || "").trim().toLowerCase();
+        if (th5 === "result") {
+          trashSheet.insertColumnBefore(5);
+          trashSheet.getRange(1, 5).setValue("T/C").setFontWeight("bold").setBackground("#fee2e2");
+        }
       }
 
       // 7일 만료된 오래된 휴지통 항목 자동 영구 삭제
@@ -128,9 +142,11 @@ function doPost(e) {
       var lastRow = sheet.getLastRow();
 
       if (lastRow > 1 && items.length > 0) {
-        var displayValues = sheet.getRange(2, 1, lastRow - 1, 9).getDisplayValues();
-        var rawValues = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
-        var formulas = sheet.getRange(2, 9, lastRow - 1, 1).getFormulas();
+        var hasTc = (sheet.getLastColumn() >= 10 || String(sheet.getRange(1, 5).getValue() || "").trim().toLowerCase() !== "result");
+        var cropCol = hasTc ? 10 : 9;
+        var displayValues = sheet.getRange(2, 1, lastRow - 1, cropCol).getDisplayValues();
+        var rawValues = sheet.getRange(2, 1, lastRow - 1, cropCol).getValues();
+        var formulas = sheet.getRange(2, cropCol, lastRow - 1, 1).getFormulas();
 
         function normalizeDateDigits(val) {
           if (!val) return "";
@@ -160,11 +176,21 @@ function doPost(e) {
             var rowData = displayValues[i];
             var cropForm = formulas[i] && formulas[i][0];
 
-            // Trash 시트에 추가 (9개 열 데이터 + deletedAt)
-            trashSheet.appendRow([
-              rowData[0], rowData[1], rowData[2], rowData[3], rowData[4],
-              rowData[5], rowData[6], rowData[7], cropForm || rowData[8], matchDel
-            ]);
+            if (hasTc) {
+              // Trash 시트에 추가 (10개 열 데이터 + deletedAt)
+              trashSheet.appendRow([
+                rowData[0], rowData[1], rowData[2], rowData[3], rowData[4],
+                rowData[5], rowData[6], rowData[7], rowData[8], cropForm || rowData[9], matchDel
+              ]);
+            } else {
+              var cNum = parseFloat(rowData[2]);
+              var tNum = parseFloat(rowData[3]);
+              var tc = (!isNaN(cNum) && cNum > 0) ? (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : "0.000") : "#DIV/0!";
+              trashSheet.appendRow([
+                rowData[0], rowData[1], rowData[2], rowData[3], tc,
+                rowData[4], rowData[5], rowData[6], rowData[7], cropForm || rowData[8], matchDel
+              ]);
+            }
 
             // 원본 시트에서 삭제
             sheet.deleteRow(i + 2);
@@ -196,9 +222,11 @@ function doPost(e) {
         }
 
         var trashLastRow = trashSheet.getLastRow();
-        var trashValues = trashSheet.getRange(2, 1, trashLastRow - 1, 9).getDisplayValues();
-        var trashRaw = trashSheet.getRange(2, 1, trashLastRow - 1, 9).getValues();
-        var trashFormulas = trashSheet.getRange(2, 9, trashLastRow - 1, 1).getFormulas();
+        var tHasTc = (trashSheet.getLastColumn() >= 11 || String(trashSheet.getRange(1, 5).getValue() || "").trim().toLowerCase() !== "result");
+        var tCropCol = tHasTc ? 10 : 9;
+        var trashValues = trashSheet.getRange(2, 1, trashLastRow - 1, tCropCol).getDisplayValues();
+        var trashRaw = trashSheet.getRange(2, 1, trashLastRow - 1, tCropCol).getValues();
+        var trashFormulas = trashSheet.getRange(2, tCropCol, trashLastRow - 1, 1).getFormulas();
 
         for (var j = trashValues.length - 1; j >= 0; j--) {
           var tTs = trashValues[j][0];
@@ -219,13 +247,23 @@ function doPost(e) {
 
           if (matchRestore) {
             var tRow = trashValues[j];
-            var tCrop = (trashFormulas[j] && trashFormulas[j][0]) || tRow[8];
+            var tCrop = (trashFormulas[j] && trashFormulas[j][0]) || tRow[tCropCol - 1];
 
-            // 원본 시트에 다시 추가
-            sheet.appendRow([
-              tRow[0], tRow[1], tRow[2], tRow[3], tRow[4],
-              tRow[5], tRow[6], tRow[7], tCrop
-            ]);
+            if (tHasTc) {
+              // 원본 시트에 다시 추가
+              sheet.appendRow([
+                tRow[0], tRow[1], tRow[2], tRow[3], tRow[4],
+                tRow[5], tRow[6], tRow[7], tRow[8], tCrop
+              ]);
+            } else {
+              var cNum = parseFloat(tRow[2]);
+              var tNum = parseFloat(tRow[3]);
+              var tc = (!isNaN(cNum) && cNum > 0) ? (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : "0.000") : "#DIV/0!";
+              sheet.appendRow([
+                tRow[0], tRow[1], tRow[2], tRow[3], tc,
+                tRow[4], tRow[5], tRow[6], tRow[7], tCrop
+              ]);
+            }
 
             // Trash 시트에서 제거
             trashSheet.deleteRow(j + 2);
@@ -278,8 +316,24 @@ function doPost(e) {
     // 1. 기본 필드 추출
     var timestamp   = data.timestamp || Utilities.formatDate(new Date(), "Asia/Seoul", "yyyy-MM-dd HH:mm:ss");
     var userId      = data.User_ID || data.userId || "guest";
-    var cLine       = data.C_line || data.cLine || "ok";
-    var tLine       = data.T_line || data.tLine || "none";
+    var cLine       = (data.C_line !== undefined && data.C_line !== null && data.C_line !== "") ? String(data.C_line) : (data.cLine !== undefined ? String(data.cLine) : "0");
+    var tLine       = (data.T_line !== undefined && data.T_line !== null && data.T_line !== "") ? String(data.T_line) : (data.tLine !== undefined ? String(data.tLine) : "0");
+    if (cLine === "ok") cLine = "1.000"; else if (cLine === "none") cLine = "0";
+    if (tLine === "ok") tLine = "1.000"; else if (tLine === "none") tLine = "0";
+
+    var tcRatio     = (data["T/C"] !== undefined && data["T/C"] !== null && data["T/C"] !== "") ? String(data["T/C"]) : (data.tcRatio || data.tc_ratio || "");
+    if (!tcRatio) {
+      var cNum = parseFloat(cLine);
+      var tNum = parseFloat(tLine);
+      if (!isNaN(cNum) && cNum > 0) {
+        tcRatio = (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : "0.000");
+      } else {
+        tcRatio = "#DIV/0!";
+      }
+    } else if (cLine === "0" || parseFloat(cLine) === 0) {
+      tcRatio = "#DIV/0!";
+    }
+
     var result      = data.result || "negative";
     var value       = data.value !== undefined ? data.value : "";
     var errorMsg    = data.error || "";
@@ -360,16 +414,17 @@ function doPost(e) {
 
     // [2순위 매칭] 전체 행 대상 다중 조건 정밀 검색 (드라이브ID / 파일명 / 정규화 일시+사용자)
     if (targetRow === -1 && lastRowIdx > 1) {
-      var rawValues = sheet.getRange(2, 1, lastRowIdx - 1, 9).getValues();
-      var displayValues = sheet.getRange(2, 1, lastRowIdx - 1, 9).getDisplayValues();
-      var formulas = sheet.getRange(2, 9, lastRowIdx - 1, 1).getFormulas();
+      var cropColIdx = (sheet.getLastColumn() >= 10 || String(sheet.getRange(1, 5).getValue() || "").trim().toLowerCase() !== "result") ? 10 : 9;
+      var rawValues = sheet.getRange(2, 1, lastRowIdx - 1, cropColIdx).getValues();
+      var displayValues = sheet.getRange(2, 1, lastRowIdx - 1, cropColIdx).getDisplayValues();
+      var formulas = sheet.getRange(2, cropColIdx, lastRowIdx - 1, 1).getFormulas();
 
       for (var i = displayValues.length - 1; i >= 0; i--) {
         var rowNum = i + 2;
         var rowTsVal = rawValues[i][0];
         var rowTsDisp = displayValues[i][0];
         var rowUser = (displayValues[i][1] || "").trim();
-        var rowCrop = (displayValues[i][8] || "").trim();
+        var rowCrop = (displayValues[i][cropColIdx - 1] || "").trim();
         var rowFormula = (formulas[i] && formulas[i][0]) || "";
 
         // 1) 드라이브 File ID 일치
@@ -401,9 +456,10 @@ function doPost(e) {
     if (targetRow > 0) {
       // [기존 행 덮어쓰기 업데이트]
       isUpdated = true;
-      sheet.getRange(targetRow, 3).setValue(cLine || "ok");
-      sheet.getRange(targetRow, 4).setValue(tLine || "none");
-      sheet.getRange(targetRow, 5).setValue(result || "negative");
+      sheet.getRange(targetRow, 3).setValue(cLine);
+      sheet.getRange(targetRow, 4).setValue(tLine);
+      sheet.getRange(targetRow, 5).setValue(tcRatio);
+      sheet.getRange(targetRow, 6).setValue(result || "negative");
       // 양성이면 농도값 기록, 음성/실패 시 이전 농도값 클리어
       var isPositive = (result === "positive" || result === "양성");
       var valToSave = "";
@@ -417,15 +473,15 @@ function doPost(e) {
           valToSave = (value !== "" && value !== null && value !== undefined) ? String(value) : "1.00";
         }
       }
-      sheet.getRange(targetRow, 6).setValue(valToSave);
-      sheet.getRange(targetRow, 7).setValue(errorMsg || "");
+      sheet.getRange(targetRow, 7).setValue(valToSave);
+      sheet.getRange(targetRow, 8).setValue(errorMsg || "");
       if (data.Memo !== undefined || data.memo !== undefined) {
-        sheet.getRange(targetRow, 8).setValue(memo);
+        sheet.getRange(targetRow, 9).setValue(memo);
       }
       
-      // 새로 드라이브에 이미지가 올라갔다면 하이퍼링크 갱신
+      // 새로 드라이브에 이미지가 올라갔다면 하이퍼링크 갱신 (10열)
       if (isDriveSuccess && driveFileUrl) {
-        var cropCell = sheet.getRange(targetRow, 9);
+        var cropCell = sheet.getRange(targetRow, 10);
         var formula = '=HYPERLINK("' + driveFileUrl + '", "' + rawFilename + '")';
         cropCell.setFormula(formula);
       }
@@ -446,8 +502,9 @@ function doPost(e) {
       var newRow = [
         timestamp,
         userId,
-        cLine || "ok",
-        tLine || "none",
+        cLine,
+        tLine,
+        tcRatio,
         result || "negative",
         valToSave,
         errorMsg || "",
@@ -458,7 +515,7 @@ function doPost(e) {
       var newLastRowIdx = sheet.getLastRow();
 
       if (isDriveSuccess && driveFileUrl) {
-        var cropCell = sheet.getRange(newLastRowIdx, 9);
+        var cropCell = sheet.getRange(newLastRowIdx, 10);
         var formula = '=HYPERLINK("' + driveFileUrl + '", "' + rawFilename + '")';
         cropCell.setFormula(formula);
       }
@@ -496,13 +553,43 @@ function extractRowData(row, cropForm, richText, folder, isTrash) {
   var userId    = String(row[1] || "").trim();
   var cLine     = String(row[2] || "").trim();
   var tLine     = String(row[3] || "").trim();
-  var resultRaw = String(row[4] || "").trim();
-  var valRaw    = row[5];
-  var errStr    = String(row[6] || "").trim();
-  var memoStr   = String(row[7] || "").trim();
-  var cropVal   = String(row[8] || "").trim();
-  var cropFormula = String(cropForm || "").trim();
-  var deletedAtRaw = isTrash ? row[9] : null;
+
+  var tcRatio   = "";
+  var resultRaw = "";
+  var valRaw    = "";
+  var errStr    = "";
+  var memoStr   = "";
+  var cropVal   = "";
+  var deletedAtRaw = null;
+
+  // 구버전 9열 구조(col 5가 result)인지, 신규 10열 구조(col 5가 T/C, col 6이 result)인지 구분
+  var col4Val = String(row[4] || "").trim().toLowerCase();
+  var isOld9Col = (col4Val === "positive" || col4Val === "negative" || col4Val === "fail" || col4Val === "양성" || col4Val === "음성" || col4Val === "실패");
+
+  if (isOld9Col) {
+    resultRaw    = String(row[4] || "").trim();
+    valRaw       = row[5];
+    errStr       = String(row[6] || "").trim();
+    memoStr      = String(row[7] || "").trim();
+    cropVal      = String(row[8] || "").trim();
+    deletedAtRaw = isTrash ? row[9] : null;
+
+    var cNum = parseFloat(cLine);
+    var tNum = parseFloat(tLine);
+    if (!isNaN(cNum) && cNum > 0) {
+      tcRatio = (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : "0.000");
+    } else {
+      tcRatio = (cLine === "0" || cLine === "none") ? "#DIV/0!" : "-";
+    }
+  } else {
+    tcRatio      = String(row[4] !== undefined && row[4] !== null ? row[4] : "").trim();
+    resultRaw    = String(row[5] || "").trim();
+    valRaw       = row[6];
+    errStr       = String(row[7] || "").trim();
+    memoStr      = String(row[8] || "").trim();
+    cropVal      = String(row[9] || "").trim();
+    deletedAtRaw = isTrash ? row[10] : null;
+  }
 
   // 날짜 포맷 표준화 (초 단위 포함)
   var tsFormatted = "";
@@ -589,6 +676,7 @@ function extractRowData(row, cropForm, richText, folder, isTrash) {
     userNickname: userId,
     cLine: cLine,
     tLine: tLine,
+    tcRatio: tcRatio,
     result: resultKorean,
     resultEnglish: resultRaw,
     concentrationStr: concStr,
@@ -674,10 +762,12 @@ function doGet(e) {
         purgeExpiredTrash(trashSheet);
         var trashLastRow = trashSheet.getLastRow();
         if (trashLastRow > 1) {
-          var tCols = Math.max(10, trashSheet.getLastColumn());
+          var tHasTc = (trashSheet.getLastColumn() >= 11 || String(trashSheet.getRange(1, 5).getValue() || "").trim().toLowerCase() !== "result");
+          var tCropCol = tHasTc ? 10 : 9;
+          var tCols = Math.max(tCropCol + 1, trashSheet.getLastColumn());
           var tRangeData = trashSheet.getRange(2, 1, trashLastRow - 1, tCols).getValues();
-          var tRangeFormulas = trashSheet.getRange(2, 9, trashLastRow - 1, 1).getFormulas();
-          var tRangeRichText = trashSheet.getRange(2, 9, trashLastRow - 1, 1).getRichTextValues();
+          var tRangeFormulas = trashSheet.getRange(2, tCropCol, trashLastRow - 1, 1).getFormulas();
+          var tRangeRichText = trashSheet.getRange(2, tCropCol, trashLastRow - 1, 1).getRichTextValues();
 
           for (var ti = 0; ti < tRangeData.length; ti++) {
             var tRow = tRangeData[ti];
@@ -711,10 +801,12 @@ function doGet(e) {
       var results = [];
 
       if (lastRow > 1) {
-        var mCols = Math.max(9, sheet.getLastColumn());
+        var mHasTc = (sheet.getLastColumn() >= 10 || String(sheet.getRange(1, 5).getValue() || "").trim().toLowerCase() !== "result");
+        var mCropCol = mHasTc ? 10 : 9;
+        var mCols = Math.max(mCropCol, sheet.getLastColumn());
         var rangeData = sheet.getRange(2, 1, lastRow - 1, mCols).getValues();
-        var rangeFormulas = sheet.getRange(2, 9, lastRow - 1, 1).getFormulas();
-        var rangeRichText = sheet.getRange(2, 9, lastRow - 1, 1).getRichTextValues();
+        var rangeFormulas = sheet.getRange(2, mCropCol, lastRow - 1, 1).getFormulas();
+        var rangeRichText = sheet.getRange(2, mCropCol, lastRow - 1, 1).getRichTextValues();
 
         for (var i = 0; i < rangeData.length; i++) {
           var row = rangeData[i];
@@ -774,7 +866,8 @@ function cleanupDuplicateRows() {
     return;
   }
 
-  var range = sheet.getRange(2, 1, lastRow - 1, 9);
+  var cropColIdx = (sheet.getLastColumn() >= 10 || String(sheet.getRange(1, 5).getValue() || "").trim().toLowerCase() !== "result") ? 10 : 9;
+  var range = sheet.getRange(2, 1, lastRow - 1, cropColIdx);
   var values = range.getDisplayValues();
   var seenKeys = {};
   var rowsToDelete = [];
@@ -784,7 +877,7 @@ function cleanupDuplicateRows() {
     var rowNum = i + 2;
     var ts = (values[i][0] || "").trim().replace(/\s+/g, '');
     var user = (values[i][1] || "").trim();
-    var crop = (values[i][8] || "").trim();
+    var crop = (values[i][cropColIdx - 1] || "").trim();
 
     // 식별 키: 타임스탬프와 사용자ID (또는 파일명)
     var key = ts + "__" + user;

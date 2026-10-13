@@ -108,6 +108,16 @@ class LFAAnalyzer {
             
             const totalElapsed = Math.round(performance.now() - startTime);
 
+            const cHeight = peakResults.cLine.height;
+            const tHeight = peakResults.tLine.height;
+            const cDetected = peakResults.cLine.detected;
+            const tDetected = peakResults.tLine.detected;
+            const cValStr = (cDetected && cHeight != null && cHeight > 0) ? cHeight.toFixed(3) : '0';
+            const tValStr = (tDetected && tHeight != null && tHeight > 0) ? tHeight.toFixed(3) : '0';
+            const tcValStr = (cDetected && cHeight != null && cHeight > 0)
+                ? (tDetected && tHeight != null ? (tHeight / cHeight).toFixed(3) : '0.000')
+                : '#DIV/0!';
+
             return {
                 success: true,
                 timestamp: new Date().toISOString(),
@@ -116,20 +126,25 @@ class LFAAnalyzer {
                     resultEnglish: diagnosis.resultEng,
                     concentration: diagnosis.concentration,
                     concentrationStr: diagnosis.concentrationStr,
-                    cLineDetected: peakResults.cLine.detected,
-                    tLineDetected: peakResults.tLine.detected,
-                    cLineStatus: peakResults.cLine.detected ? 'ok' : 'none',
-                    tLineStatus: peakResults.tLine.detected ? 'ok' : 'none',
+                    cLineDetected: cDetected,
+                    tLineDetected: tDetected,
+                    cLineStatus: cValStr,
+                    tLineStatus: tValStr,
+                    cLineValue: cValStr,
+                    tLineValue: tValStr,
+                    tcRatio: tcValStr,
+                    tcRatioStr: tcValStr,
                     errorReason: diagnosis.errorReason,
                     qcWarning: diagnosis.qcWarning || '',
                     confidence: diagnosis.confidence
                 },
                 metrics: {
-                    cPeakHeight: peakResults.cLine.height,
+                    cPeakHeight: cHeight,
                     cPeakAUC: peakResults.cLine.auc,
-                    tPeakHeight: peakResults.tLine.height,
+                    tPeakHeight: tHeight,
                     tPeakAUC: peakResults.tLine.auc,
                     tcRatio: peakResults.tcRatio,
+                    tcRatioStr: tcValStr,
                     signalToNoise: peakResults.snr,
                     bgNoiseSigma: peakResults.bgNoiseSigma,
                     cLineMethod: peakResults.cLine.method || 'standard',
@@ -163,8 +178,12 @@ class LFAAnalyzer {
                     concentrationStr: '-',
                     cLineDetected: false,
                     tLineDetected: false,
-                    cLineStatus: 'none',
-                    tLineStatus: 'none',
+                    cLineStatus: '0',
+                    tLineStatus: '0',
+                    cLineValue: '0',
+                    tLineValue: '0',
+                    tcRatio: '#DIV/0!',
+                    tcRatioStr: '#DIV/0!',
                     errorReason: err.message || 'unknown_error',
                     confidence: 0
                 },

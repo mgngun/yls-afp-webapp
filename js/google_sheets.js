@@ -117,14 +117,45 @@ class GoogleSheetsSync {
 
     async syncResult(analysisResult, user = {}, memo = '', cropFilename = '', cropDataUrl = null, customTimestamp = null, extraData = {}) {
         if (!analysisResult) return;
-        const diag = analysisResult.diagnosis || {};
+        const diag = analysisResult.diagnosis || (analysisResult.result ? analysisResult : {});
+        const metrics = analysisResult.metrics || {};
+
+        const cDetected = diag.cLineDetected !== undefined ? diag.cLineDetected : (diag.cLineStatus && diag.cLineStatus !== 'none' && diag.cLineStatus !== '0');
+        const tDetected = diag.tLineDetected !== undefined ? diag.tLineDetected : (diag.tLineStatus && diag.tLineStatus !== 'none' && diag.tLineStatus !== '0');
+
+        let cHeight = metrics.cPeakHeight !== undefined ? metrics.cPeakHeight : (diag.cPeakHeight !== undefined ? diag.cPeakHeight : null);
+        if (cHeight === null && diag.cLine && !isNaN(parseFloat(diag.cLine))) cHeight = parseFloat(diag.cLine);
+        if (cHeight === null && diag.cLineStatus && !isNaN(parseFloat(diag.cLineStatus))) cHeight = parseFloat(diag.cLineStatus);
+
+        let tHeight = metrics.tPeakHeight !== undefined ? metrics.tPeakHeight : (diag.tPeakHeight !== undefined ? diag.tPeakHeight : null);
+        if (tHeight === null && diag.tLine && !isNaN(parseFloat(diag.tLine))) tHeight = parseFloat(diag.tLine);
+        if (tHeight === null && diag.tLineStatus && !isNaN(parseFloat(diag.tLineStatus))) tHeight = parseFloat(diag.tLineStatus);
+
+        // 4. 구글시트의 'C_line' 열: 선이 있으면 C-Line 강도 값, 없으면 '0'
+        const cLineVal = (cDetected && cHeight != null && cHeight > 0) ? (typeof cHeight === 'number' ? cHeight.toFixed(3) : String(cHeight)) : '0';
+        // 5. 구글시트의 'T_line' 열: 선이 있으면 T-Line 강도 값, 없으면 '0'
+        const tLineVal = (tDetected && tHeight != null && tHeight > 0) ? (typeof tHeight === 'number' ? tHeight.toFixed(3) : String(tHeight)) : '0';
+
+        // 6. T/C 값 (단, C값이 0이면 '#DIV/0!' 으로 표기)
+        let tcVal = '#DIV/0!';
+        const cNum = parseFloat(cLineVal);
+        const tNum = parseFloat(tLineVal);
+        if (!isNaN(cNum) && cNum > 0) {
+            tcVal = (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : '0.000');
+        } else {
+            tcVal = '#DIV/0!';
+        }
+
         return this.recordResult({
             timestamp:         customTimestamp || this.formatTimestamp(new Date()),
             userId:            user.username || user.nickname || user.id || 'guest',
-            cLineStatus:       diag.cLineStatus,
-            tLineStatus:       diag.tLineStatus,
-            cLineDetected:     diag.cLineDetected,
-            tLineDetected:     diag.tLineDetected,
+            cLineStatus:       cLineVal,
+            tLineStatus:       tLineVal,
+            cLine:             cLineVal,
+            tLine:             tLineVal,
+            tcRatio:           tcVal,
+            cLineDetected:     cDetected,
+            tLineDetected:     tDetected,
             result:            diag.result,
             resultEnglish:     diag.resultEnglish,
             concentration:     diag.concentration,
@@ -139,16 +170,49 @@ class GoogleSheetsSync {
 
     /**
      * Records a diagnostic test result.
-     * Google Sheets columns (per 1차 개편 spec):
-     * timestamp | User_ID | C_line | T_line | result | value | error | Memo | Crop_image
+     * Google Sheets columns (T/C ratio included):
+     * timestamp | User_ID | C_line | T_line | T/C | result | value | error | Memo | Crop_image
      * Sheet: https://docs.google.com/spreadsheets/d/1ckyAywMytLJCClUgwizQakq5xdQmm_5fNeQYSW4S3jo
      */
     async recordResult(record) {
+        let cLine = '0';
+        if (record.cLine !== undefined) {
+            cLine = String(record.cLine);
+        } else if (record.cLineStatus !== undefined) {
+            cLine = (record.cLineStatus === 'none' || record.cLineStatus === '0') ? '0' : String(record.cLineStatus);
+        } else if (record.cLineDetected) {
+            cLine = '1.000';
+        }
+
+        let tLine = '0';
+        if (record.tLine !== undefined) {
+            tLine = String(record.tLine);
+        } else if (record.tLineStatus !== undefined) {
+            tLine = (record.tLineStatus === 'none' || record.tLineStatus === '0') ? '0' : String(record.tLineStatus);
+        } else if (record.tLineDetected) {
+            tLine = '1.000';
+        }
+
+        let tcRatio = record.tcRatio;
+        if (!tcRatio) {
+            const cNum = parseFloat(cLine);
+            const tNum = parseFloat(tLine);
+            if (!isNaN(cNum) && cNum > 0) {
+                tcRatio = (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : '0.000');
+            } else {
+                tcRatio = '#DIV/0!';
+            }
+        } else if (String(cLine).trim() === '0' || parseFloat(cLine) === 0) {
+            tcRatio = '#DIV/0!';
+        }
+
         const rowData = {
             timestamp:         record.timestamp || this.formatTimestamp(new Date()),
             User_ID:           record.userId    || 'guest',
-            C_line:            record.cLineStatus || (record.cLineDetected ? 'ok' : 'none'),
-            T_line:            record.tLineStatus || (record.tLineDetected ? 'ok' : 'none'),
+            C_line:            cLine,
+            T_line:            tLine,
+            'T/C':             tcRatio,
+            tcRatio:           tcRatio,
             result:            record.resultEnglish ||
                                 (record.result === '양성' ? 'positive' :
                                  record.result === '음성' ? 'negative' : 'fail'),
@@ -348,18 +412,35 @@ class GoogleSheetsSync {
             return;
         }
 
-        const headers = ['timestamp', 'User_ID', 'C_line', 'T_line', 'result', 'value', 'error', 'Memo', 'Crop_image'];
-        const rows = queue.map(r => [
-            `"${r.timestamp    || ''}"`,
-            `"${r.User_ID      || ''}"`,
-            `"${r.C_line       || ''}"`,
-            `"${r.T_line       || ''}"`,
-            `"${r.result       || ''}"`,
-            `"${r.value !== undefined ? r.value : ''}"`,
-            `"${r.error        || ''}"`,
-            `"${r.Memo         || ''}"`,
-            `"${r.Crop_image   || ''}"`
-        ]);
+        const headers = ['timestamp', 'User_ID', 'C_line', 'T_line', 'T/C', 'result', 'value', 'error', 'Memo', 'Crop_image'];
+        const rows = queue.map(r => {
+            const cStr = r.C_line !== undefined ? String(r.C_line) : '0';
+            const tStr = r.T_line !== undefined ? String(r.T_line) : '0';
+            let tc = r['T/C'] || r.tcRatio || '';
+            if (!tc) {
+                const cNum = parseFloat(cStr);
+                const tNum = parseFloat(tStr);
+                if (!isNaN(cNum) && cNum > 0) {
+                    tc = (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : '0.000');
+                } else {
+                    tc = '#DIV/0!';
+                }
+            } else if (cStr === '0' || parseFloat(cStr) === 0) {
+                tc = '#DIV/0!';
+            }
+            return [
+                `"${r.timestamp    || ''}"`,
+                `"${r.User_ID      || ''}"`,
+                `"${cStr}"`,
+                `"${tStr}"`,
+                `"${tc}"`,
+                `"${r.result       || ''}"`,
+                `"${r.value !== undefined ? r.value : ''}"`,
+                `"${r.error        || ''}"`,
+                `"${r.Memo         || ''}"`,
+                `"${r.Crop_image   || ''}"`
+            ];
+        });
 
         const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\r\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

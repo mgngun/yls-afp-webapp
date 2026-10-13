@@ -145,6 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
         graphProfile: document.getElementById('graph-profile-canvas'),
         metricT: document.getElementById('metric-t-intensity'),
         metricC: document.getElementById('metric-c-intensity'),
+        metricTc: document.getElementById('metric-tc-ratio'),
         metricConf: document.getElementById('metric-confidence'),
         metricSnr: document.getElementById('metric-snr'),
         // CSV Calendar Popup
@@ -1087,6 +1088,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (_) { }
 
+        const cDetected = diag.cLineDetected;
+        const tDetected = diag.tLineDetected;
+        const cHeight = analysis.metrics?.cPeakHeight;
+        const tHeight = analysis.metrics?.tPeakHeight;
+
+        const cLineVal = (cDetected && cHeight != null && cHeight > 0) ? cHeight.toFixed(3) : '0';
+        const tLineVal = (tDetected && tHeight != null && tHeight > 0) ? tHeight.toFixed(3) : '0';
+        const tcVal = (cDetected && cHeight != null && cHeight > 0)
+            ? (tDetected && tHeight != null ? (tHeight / cHeight).toFixed(3) : '0.000')
+            : '#DIV/0!';
+
         const record = {
             id: 'REC_' + Date.now(),
             timestamp: ts,
@@ -1098,7 +1110,10 @@ document.addEventListener('DOMContentLoaded', () => {
             cropFilename: fname,
             profileData,
             metrics: analysis.metrics || null,
-            confidence: diag.confidence || null
+            confidence: diag.confidence || null,
+            cLine: cLineVal,
+            tLine: tLineVal,
+            tcRatio: tcVal
         };
 
         history.push(record);
@@ -1959,18 +1974,35 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const headers = ['timestamp', 'User_ID', 'C_line', 'T_line', 'result', 'value', 'error', 'Memo', 'Crop_image'];
-        const rows = filtered.map(r => [
-            `"${r.timestamp || ''}"`,
-            `"${r.userNickname || r.User_ID || state.currentUser.username || ''}"`,
-            `"${r.cLine || (r.result === '실패' ? 'none' : 'ok')}"`,
-            `"${r.tLine || (r.result === '양성' ? 'ok' : 'none')}"`,
-            `"${r.resultEnglish || (r.result === '양성' ? 'positive' : r.result === '음성' ? 'negative' : 'fail')}"`,
-            `"${r.concentrationStr && r.concentrationStr !== '-' ? r.concentrationStr : (r.result === '양성' ? '1.00' : '')}"`,
-            `"${r.error || ''}"`,
-            `"${r.memo || ''}"`,
-            `"${r.cropUrl || r.cropFilename || ''}"`
-        ]);
+        const headers = ['timestamp', 'User_ID', 'C_line', 'T_line', 'T/C', 'result', 'value', 'error', 'Memo', 'Crop_image'];
+        const rows = filtered.map(r => {
+            const cLineStr = (r.cLine !== undefined && r.cLine !== null && r.cLine !== '') ? String(r.cLine) : (r.cLineDetected ? '1.000' : '0');
+            const tLineStr = (r.tLine !== undefined && r.tLine !== null && r.tLine !== '') ? String(r.tLine) : (r.tLineDetected ? '1.000' : '0');
+            let tcStr = r.tcRatio || r.tcRatioStr || '';
+            if (!tcStr) {
+                const cNum = parseFloat(cLineStr);
+                const tNum = parseFloat(tLineStr);
+                if (!isNaN(cNum) && cNum > 0) {
+                    tcStr = (!isNaN(tNum) ? (tNum / cNum).toFixed(3) : '0.000');
+                } else {
+                    tcStr = '#DIV/0!';
+                }
+            } else if (cLineStr === '0' || parseFloat(cLineStr) === 0) {
+                tcStr = '#DIV/0!';
+            }
+            return [
+                `"${r.timestamp || ''}"`,
+                `"${r.userNickname || r.User_ID || state.currentUser.username || ''}"`,
+                `"${cLineStr}"`,
+                `"${tLineStr}"`,
+                `"${tcStr}"`,
+                `"${r.resultEnglish || (r.result === '양성' ? 'positive' : r.result === '음성' ? 'negative' : 'fail')}"`,
+                `"${r.concentrationStr && r.concentrationStr !== '-' ? r.concentrationStr : (r.result === '양성' ? '1.00' : '')}"`,
+                `"${r.error || ''}"`,
+                `"${r.memo || ''}"`,
+                `"${r.cropUrl || r.cropFilename || ''}"`
+            ];
+        });
 
         const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\r\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -2057,7 +2089,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // 구글 시트에 메모 변경 동기화 (원래의 검사일시 유지)
             if (state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
                 state.sheetsSync.syncResult(
-                    { diagnosis: { result: history[idx].result, concentrationStr: history[idx].concentrationStr } },
+                    history[idx],
                     state.currentUser,
                     history[idx].memo,
                     history[idx].cropFilename || '',
@@ -2220,10 +2252,22 @@ document.addEventListener('DOMContentLoaded', () => {
                                 record.result = newResult;
                                 record.concentrationStr = newConc;
 
+                                const reCHeight = analysisRes.metrics?.cPeakHeight;
+                                const reTHeight = analysisRes.metrics?.tPeakHeight;
+                                const reCDetected = vd.cLineDetected;
+                                const reTDetected = vd.tLineDetected;
+
+                                record.cLine = (reCDetected && reCHeight != null && reCHeight > 0) ? reCHeight.toFixed(3) : '0';
+                                record.tLine = (reTDetected && reTHeight != null && reTHeight > 0) ? reTHeight.toFixed(3) : '0';
+                                record.tcRatio = (reCDetected && reCHeight != null && reCHeight > 0)
+                                    ? (reTDetected && reTHeight != null ? (reTHeight / reCHeight).toFixed(3) : '0.000')
+                                    : '#DIV/0!';
+
                                 drawAbsorbanceGraph(record);
                                 const m = record.metrics || {};
                                 setText(el.metricT, m.tPeakHeight != null ? m.tPeakHeight.toFixed(3) : '-');
                                 setText(el.metricC, m.cPeakHeight != null ? m.cPeakHeight.toFixed(3) : '-');
+                                setText(el.metricTc, formatTCRatio(m.tPeakHeight, m.cPeakHeight));
                                 setText(el.metricConf, record.confidence != null ? record.confidence.toFixed(1) + '%' : '-');
                                 setText(el.metricSnr, m.signalToNoise != null ? m.signalToNoise.toFixed(1) + ' dB' : '-');
 
@@ -2289,9 +2333,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const m = record.metrics || {};
         const conf = record.confidence;
 
-        setText(el.metricT, m.tPeakHeight != null ? m.tPeakHeight.toFixed(3) : '-');
-        setText(el.metricC, m.cPeakHeight != null ? m.cPeakHeight.toFixed(3) : '-');
-        setText(el.metricConf, conf != null ? conf.toFixed(1) + '%' : '-');
+        const tVal = m.tPeakHeight != null ? m.tPeakHeight : (record.tLine !== undefined && !isNaN(parseFloat(record.tLine)) ? parseFloat(record.tLine) : null);
+        const cVal = m.cPeakHeight != null ? m.cPeakHeight : (record.cLine !== undefined && !isNaN(parseFloat(record.cLine)) ? parseFloat(record.cLine) : null);
+
+        setText(el.metricT, tVal != null ? (typeof tVal === 'number' ? tVal.toFixed(3) : tVal) : '-');
+        setText(el.metricC, cVal != null ? (typeof cVal === 'number' ? cVal.toFixed(3) : cVal) : '-');
+        const calculatedTc = formatTCRatio(tVal, cVal);
+        setText(el.metricTc, calculatedTc !== '-' ? calculatedTc : (record.tcRatio || '-'));
+        setText(el.metricConf, conf != null ? (typeof conf === 'number' ? conf.toFixed(1) + '%' : conf) : '-');
         setText(el.metricSnr, m.signalToNoise != null ? m.signalToNoise.toFixed(1) + ' dB' : '-');
     }
 
@@ -2341,6 +2390,20 @@ document.addEventListener('DOMContentLoaded', () => {
         el.graphPopup.addEventListener('click', e => {
             if (e.target === el.graphPopup) closeGraphPopup();
         });
+    }
+
+    function formatTCRatio(tIntensity, cIntensity) {
+        if (cIntensity === null || cIntensity === undefined || cIntensity === '' || cIntensity === '-') return '-';
+        const cNum = typeof cIntensity === 'number' ? cIntensity : parseFloat(cIntensity);
+        if (isNaN(cNum)) return '-';
+        if (cNum === 0 || Math.abs(cNum) < 1e-6) {
+            return '#DIV/0!';
+        }
+        const tNum = (tIntensity !== null && tIntensity !== undefined && tIntensity !== '' && tIntensity !== '-')
+            ? (typeof tIntensity === 'number' ? tIntensity : parseFloat(tIntensity))
+            : 0;
+        const validT = isNaN(tNum) ? 0 : tNum;
+        return (validT / cNum).toFixed(3);
     }
 
     function setText(node, text) { if (node) node.textContent = text; }
