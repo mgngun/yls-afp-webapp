@@ -1794,32 +1794,52 @@ body {
 
 /* Metrics grid */
 .graph-metrics-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 8px;
+}
+
+.graph-metrics-row {
+    display: grid;
+    gap: 8px;
+}
+
+.graph-metrics-row.row-top {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.graph-metrics-row.row-bottom {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .graph-metric-item {
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: var(--radius-sm);
-    padding: 10px 12px;
+    padding: 9px 8px;
     display: flex;
     flex-direction: column;
     gap: 4px;
+    min-width: 0;
 }
 
 .graph-metric-label {
     font-size: 10px;
     color: #64748b;
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .graph-metric-value {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     color: #0f172a;
     font-family: monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .graph-metric-value.t-value {
@@ -1828,6 +1848,10 @@ body {
 
 .graph-metric-value.c-value {
     color: #059669;
+}
+
+.graph-metric-value.tc-value {
+    color: #2563eb;
 }
 
 /* ==========================================================================
