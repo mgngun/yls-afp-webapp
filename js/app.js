@@ -1012,7 +1012,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 navigateTo('results');
                 if (savedRecord) {
-                    showGraphPopup(savedRecord);
+                    showGraphPopup(savedRecord, { isNewCapture: true });
                 }
             } catch (err) {
                 console.error('Analysis error:', err);
@@ -2160,7 +2160,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function showGraphPopup(record) {
+    function showGraphPopup(record, options = {}) {
         state.activeGraphRecord = record;
         if (el.graphPopup) el.graphPopup.classList.remove('hidden');
 
@@ -2290,7 +2290,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const base64Data = (record.cropImageDataUrl && record.cropImageDataUrl.startsWith('data:image/'))
                                     ? record.cropImageDataUrl : '';
 
-                                if (state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
+                                const isUnchangedOnServer = (oldResult === newResult && oldConc === newConc && (record.rowIndex || record.driveFileId));
+                                const shouldSync = !options.isNewCapture && !isUnchangedOnServer;
+
+                                if (shouldSync && state.sheetsSync && typeof state.sheetsSync.syncResult === 'function') {
                                     state.sheetsSync.syncResult(
                                         analysisRes,
                                         state.currentUser,
@@ -2303,8 +2306,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                             driveFileId: record.driveFileId || null
                                         }
                                     ).then(() => {
-                                        console.log(`[ServerSync] 레코드(${record.id}) 서버 동기화 성공: ${newResult} / ${newConc}`);
-                                        showToast(`서버에 농도 '${newConc} ng/dL'로 동기화 완료되었습니다.`);
+                                        console.log(`[ServerSync] 레코드(${record.id}) 서버 동기화 완료: ${newResult} / ${newConc}`);
+                                        showToast(`서버에 동기화 완료되었습니다.`);
                                     }).catch(err => {
                                         console.warn('Server update sync error:', err);
                                     });
